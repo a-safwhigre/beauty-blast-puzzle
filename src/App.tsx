@@ -113,10 +113,26 @@ export function App() {
     if (activeTool === 'hammer') {
       const clearedObjs: { [key: string]: number } = {};
       const newGrid = applyHammerTool(grid, row, col, currentLevel.colors, clearedObjs);
-      const updatedObjectives = currentLevel.objectives.map(obj => ({
-        ...obj,
-        current: obj.current + (clearedObjs[obj.type] || 0),
-      }));
+      const updatedObjectives = currentLevel.objectives.map(obj => {
+        if (obj.type === 'armchair') {
+          let remainingOnGrid = 0;
+          for (let r = 0; r < newGrid.length; r++) {
+            for (let c = 0; c < newGrid[r].length; c++) {
+              if (newGrid[r][c].kind === 'obstacle' && newGrid[r][c].obstacle === 'armchair') {
+                remainingOnGrid++;
+              }
+            }
+          }
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['armchair'] || 0), obj.target - remainingOnGrid)),
+          };
+        }
+        return {
+          ...obj,
+          current: Math.min(obj.target, obj.current + (clearedObjs[obj.type] || 0)),
+        };
+      });
 
       setGrid(newGrid);
       setCurrentLevel(prev => ({ ...prev, objectives: updatedObjectives }));
@@ -253,10 +269,42 @@ export function App() {
       }
 
       const updatedObjectives = currentLevel.objectives.map(obj => {
+        if (obj.type === 'armchair') {
+          let remainingOnGrid = 0;
+          for (let r = 0; r < result.newGrid.length; r++) {
+            for (let c = 0; c < result.newGrid[r].length; c++) {
+              if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'armchair') {
+                remainingOnGrid++;
+              }
+            }
+          }
+          const cleared = result.clearedObjectives['armchair'] || 0;
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
+          };
+        }
+
+        if (obj.type === 'crate') {
+          let remainingOnGrid = 0;
+          for (let r = 0; r < result.newGrid.length; r++) {
+            for (let c = 0; c < result.newGrid[r].length; c++) {
+              if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'crate') {
+                remainingOnGrid += result.newGrid[r][c].hitPoints || 1;
+              }
+            }
+          }
+          const cleared = result.clearedObjectives['crate'] || 0;
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
+          };
+        }
+
         const cleared = result.clearedObjectives[obj.type] || 0;
         return {
           ...obj,
-          current: obj.current + cleared,
+          current: Math.min(obj.target, obj.current + cleared),
         };
       });
 

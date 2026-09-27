@@ -374,6 +374,22 @@ export function handleTileClick(
       t.iceCover = false;
     }
 
+    // Check if the directly blasted tile itself is an obstacle
+    if (t.kind === 'obstacle') {
+      if (t.obstacle === 'armchair') {
+        clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
+        damagedObstaclePositions.push({ row: p.row, col: p.col });
+        sound.playCrateHit();
+      } else if (t.obstacle === 'crate') {
+        t.hitPoints = (t.hitPoints || 1) - 1;
+        damagedObstaclePositions.push({ row: p.row, col: p.col });
+        sound.playCrateHit();
+        if (t.hitPoints <= 0) {
+          clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+        }
+      }
+    }
+
     // Check adjacent armchairs and crates
     directions.forEach(d => {
       const nr = p.row + d.r;
