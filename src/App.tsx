@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LevelConfig, Tile, GameStatus, ActiveTool, RocketBeam, Shockwave } from './types/game';
+import { LevelConfig, Tile, GameStatus, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup } from './types/game';
 import { HANDCRAFTED_LEVELS, generateProceduralLevel } from './levels/levelData';
 import {
   initializeBoard,
@@ -60,6 +60,9 @@ export function App() {
   const [bombShockwaves, setBombShockwaves] = useState<Shockwave[]>([]);
   const [isGoalBumping, setIsGoalBumping] = useState<boolean>(false);
   const [flyingCollectibles, setFlyingCollectibles] = useState<FlyingCollectibleItem[]>([]);
+  const [isScreenShaking, setIsScreenShaking] = useState<boolean>(false);
+  const [activeMerge, setActiveMerge] = useState<BoosterMergeAnimation | null>(null);
+  const [scorePopups, setScorePopups] = useState<ScorePopup[]>([]);
 
   // Modals
   const [showLevelSelect, setShowLevelSelect] = useState<boolean>(false);
@@ -88,9 +91,14 @@ export function App() {
 
   const loadLevel = useCallback((levelConfig: LevelConfig) => {
     if (feverTimeoutRef.current) clearTimeout(feverTimeoutRef.current);
-    setCurrentLevel(levelConfig);
-    setGrid(initializeBoard(levelConfig));
-    setMovesLeft(levelConfig.moves);
+    // Clone and reset objective counters to zero for clean retry
+    const freshLevel: LevelConfig = {
+      ...levelConfig,
+      objectives: levelConfig.objectives.map(obj => ({ ...obj, current: 0 })),
+    };
+    setCurrentLevel(freshLevel);
+    setGrid(initializeBoard(freshLevel));
+    setMovesLeft(freshLevel.moves);
     setScore(0);
     setStatus('playing');
     setIsShuffling(false);
@@ -104,6 +112,9 @@ export function App() {
     setIsGoalBumping(false);
     setActiveTool(null);
     setFirstSwapCoord(null);
+    setIsScreenShaking(false);
+    setActiveMerge(null);
+    setScorePopups([]);
   }, []);
 
   const onTileClick = (row: number, col: number) => {
@@ -126,6 +137,36 @@ export function App() {
           return {
             ...obj,
             current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['armchair'] || 0), obj.target - remainingOnGrid)),
+          };
+        }
+        if (obj.type === 'wardrobe') {
+          const remainingWardrobes = new Set<string>();
+          for (let r = 0; r < newGrid.length; r++) {
+            for (let c = 0; c < newGrid[r].length; c++) {
+              const tile = newGrid[r][c];
+              if (tile.kind === 'obstacle' && tile.obstacle === 'wardrobe' && tile.groupId) {
+                remainingWardrobes.add(tile.groupId);
+              }
+            }
+          }
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['wardrobe'] || 0), obj.target - remainingWardrobes.size)),
+          };
+        }
+        if (obj.type === 'safe') {
+          let remainingSafes = 0;
+          for (let r = 0; r < newGrid.length; r++) {
+            for (let c = 0; c < newGrid[r].length; c++) {
+              const tile = newGrid[r][c];
+              if (tile.kind === 'obstacle' && tile.obstacle === 'safe') {
+                remainingSafes++;
+              }
+            }
+          }
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['safe'] || 0), obj.target - remainingSafes)),
           };
         }
         return {
@@ -198,148 +239,216 @@ export function App() {
     const nextScore = score + result.scoreGained;
     setMovesLeft(nextMoves);
 
-    // Phase 1 (0ms - 200ms): Blast, Beams, Shockwaves, Armchair Wobble
-    const blastKeys = new Set(result.blastedPositions.map(p => `${p.row},${p.col}`));
-    const damagedKeys = new Set(result.damagedObstacles.map(p => `${p.row},${p.col}`));
-    setBlastingCoords(blastKeys);
-    setDamagedObstacleCoords(damagedKeys);
-
-    if (result.rocketBeams && result.rocketBeams.length > 0) {
-      setRocketBeams(result.rocketBeams.map((b, idx) => ({ ...b, id: `rb-${Date.now()}-${idx}` })));
-    }
-    if (result.bombShockwaves && result.bombShockwaves.length > 0) {
-      setBombShockwaves(result.bombShockwaves.map((s, idx) => ({ ...s, id: `bs-${Date.now()}-${idx}` })));
+    // Screen Shake & Combo Popups
+    if (result.screenShake) {
+      setIsScreenShaking(true);
+      setTimeout(() => setIsScreenShaking(false), 380);
     }
 
-    // Spawn Flying Collectibles for destroyed armchairs
-    const flyingItems: FlyingCollectibleItem[] = [];
-    const goalEl = document.getElementById('goal-capsule');
-    const goalRect = goalEl?.getBoundingClientRect();
+    if (result.comboPopupText) {
+      const popupId = `popup-${Date.now()}`;
+      const cols = grid[0]?.length || 6;
+      const rows = grid.length;
+      const popupX = ((col + 0.5) / cols) * 100;
+      const popupY = ((row + 0.5) / rows) * 100;
+      setScorePopups(prev => [
+        ...prev,
+        { id: popupId, text: result.comboPopupText!, x: popupX, y: popupY, color: '#FBBF24' }
+      ]);
+      setTimeout(() => {
+        setScorePopups(prev => prev.filter(p => p.id !== popupId));
+      }, 780);
+    }
 
-    result.damagedObstacles.forEach((p, idx) => {
-      const tileEl = document.getElementById(`tile-${p.row}-${p.col}`);
-      if (tileEl && goalRect) {
-        const tRect = tileEl.getBoundingClientRect();
-        flyingItems.push({
-          id: `fly-${Date.now()}-${idx}`,
-          currentX: tRect.left + tRect.width / 2,
-          currentY: tRect.top + tRect.height / 2,
-          icon: '🛋️',
+    const executeBlastPhases = () => {
+      // Phase 1 (0ms - 200ms): Blast, Beams, Shockwaves, Armchair Wobble
+      const blastKeys = new Set(result.blastedPositions.map(p => `${p.row},${p.col}`));
+      const damagedKeys = new Set(result.damagedObstacles.map(p => `${p.row},${p.col}`));
+      setBlastingCoords(blastKeys);
+      setDamagedObstacleCoords(damagedKeys);
+
+      if (result.rocketBeams && result.rocketBeams.length > 0) {
+        setRocketBeams(result.rocketBeams.map((b, idx) => ({ ...b, id: `rb-${Date.now()}-${idx}` })));
+      }
+      if (result.bombShockwaves && result.bombShockwaves.length > 0) {
+        setBombShockwaves(result.bombShockwaves.map((s, idx) => ({ ...s, id: `bs-${Date.now()}-${idx}` })));
+      }
+
+      // Spawn Flying Collectibles for destroyed armchairs
+      const flyingItems: FlyingCollectibleItem[] = [];
+      const goalEl = document.getElementById('goal-capsule');
+      const goalRect = goalEl?.getBoundingClientRect();
+
+      result.damagedObstacles.forEach((p, idx) => {
+        const tileEl = document.getElementById(`tile-${p.row}-${p.col}`);
+        if (tileEl && goalRect) {
+          const tRect = tileEl.getBoundingClientRect();
+          flyingItems.push({
+            id: `fly-${Date.now()}-${idx}`,
+            currentX: tRect.left + tRect.width / 2,
+            currentY: tRect.top + tRect.height / 2,
+            icon: '🛋️',
+          });
+        }
+      });
+
+      if (flyingItems.length > 0) {
+        setFlyingCollectibles(flyingItems);
+        // Trigger fly translation toward goal capsule on next frame
+        requestAnimationFrame(() => {
+          if (goalRect) {
+            const targetX = goalRect.left + goalRect.width / 2;
+            const targetY = goalRect.top + goalRect.height / 2;
+            setFlyingCollectibles(prev =>
+              prev.map(item => ({
+                ...item,
+                currentX: targetX,
+                currentY: targetY,
+              }))
+            );
+          }
         });
       }
-    });
 
-    if (flyingItems.length > 0) {
-      setFlyingCollectibles(flyingItems);
-      // Trigger fly translation toward goal capsule on next frame
-      requestAnimationFrame(() => {
-        if (goalRect) {
-          const targetX = goalRect.left + goalRect.width / 2;
-          const targetY = goalRect.top + goalRect.height / 2;
-          setFlyingCollectibles(prev =>
-            prev.map(item => ({
-              ...item,
-              currentX: targetX,
-              currentY: targetY,
-            }))
-          );
+      // Phase 2 (200ms - 450ms): Gravity Fall & Top Refill
+      setTimeout(() => {
+        setBlastingCoords(new Set());
+        setDamagedObstacleCoords(new Set());
+        setRocketBeams([]);
+        setBombShockwaves([]);
+
+        // Update grid with smoothly falling tiles
+        setGrid(result.newGrid);
+        sound.playSlideLanding();
+      }, 200);
+
+      // Phase 3 (450ms - 550ms): Flying Item Arrival & Goal Capsule Bump
+      setTimeout(() => {
+        setFlyingCollectibles([]);
+        if (flyingItems.length > 0) {
+          setIsGoalBumping(true);
+          sound.playCollect();
+          setTimeout(() => setIsGoalBumping(false), 240);
         }
-      });
-    }
 
-    // Phase 2 (200ms - 450ms): Gravity Fall & Top Refill
-    setTimeout(() => {
-      setBlastingCoords(new Set());
-      setDamagedObstacleCoords(new Set());
-      setRocketBeams([]);
-      setBombShockwaves([]);
-
-      // Update grid with smoothly falling tiles
-      setGrid(result.newGrid);
-      sound.playSlideLanding();
-    }, 200);
-
-    // Phase 3 (450ms - 550ms): Flying Item Arrival & Goal Capsule Bump
-    setTimeout(() => {
-      setFlyingCollectibles([]);
-      if (flyingItems.length > 0) {
-        setIsGoalBumping(true);
-        sound.playCollect();
-        setTimeout(() => setIsGoalBumping(false), 240);
-      }
-
-      const updatedObjectives = currentLevel.objectives.map(obj => {
-        if (obj.type === 'armchair') {
-          let remainingOnGrid = 0;
-          for (let r = 0; r < result.newGrid.length; r++) {
-            for (let c = 0; c < result.newGrid[r].length; c++) {
-              if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'armchair') {
-                remainingOnGrid++;
+        const updatedObjectives = currentLevel.objectives.map(obj => {
+          if (obj.type === 'armchair') {
+            let remainingOnGrid = 0;
+            for (let r = 0; r < result.newGrid.length; r++) {
+              for (let c = 0; c < result.newGrid[r].length; c++) {
+                if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'armchair') {
+                  remainingOnGrid++;
+                }
               }
             }
+            const cleared = result.clearedObjectives['armchair'] || 0;
+            return {
+              ...obj,
+              current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
+            };
           }
-          const cleared = result.clearedObjectives['armchair'] || 0;
-          return {
-            ...obj,
-            current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
-          };
-        }
 
-        if (obj.type === 'crate') {
-          let remainingOnGrid = 0;
-          for (let r = 0; r < result.newGrid.length; r++) {
-            for (let c = 0; c < result.newGrid[r].length; c++) {
-              if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'crate') {
-                remainingOnGrid += result.newGrid[r][c].hitPoints || 1;
+          if (obj.type === 'crate') {
+            let remainingOnGrid = 0;
+            for (let r = 0; r < result.newGrid.length; r++) {
+              for (let c = 0; c < result.newGrid[r].length; c++) {
+                if (result.newGrid[r][c].kind === 'obstacle' && result.newGrid[r][c].obstacle === 'crate') {
+                  remainingOnGrid += result.newGrid[r][c].hitPoints || 1;
+                }
               }
             }
+            const cleared = result.clearedObjectives['crate'] || 0;
+            return {
+              ...obj,
+              current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
+            };
           }
-          const cleared = result.clearedObjectives['crate'] || 0;
+
+          if (obj.type === 'wardrobe') {
+            const remainingWardrobes = new Set<string>();
+            for (let r = 0; r < result.newGrid.length; r++) {
+              for (let c = 0; c < result.newGrid[r].length; c++) {
+                const tile = result.newGrid[r][c];
+                if (tile.kind === 'obstacle' && tile.obstacle === 'wardrobe' && tile.groupId) {
+                  remainingWardrobes.add(tile.groupId);
+                }
+              }
+            }
+            const cleared = result.clearedObjectives['wardrobe'] || 0;
+            return {
+              ...obj,
+              current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingWardrobes.size)),
+            };
+          }
+
+          if (obj.type === 'safe') {
+            let remainingSafes = 0;
+            for (let r = 0; r < result.newGrid.length; r++) {
+              for (let c = 0; c < result.newGrid[r].length; c++) {
+                const tile = result.newGrid[r][c];
+                if (tile.kind === 'obstacle' && tile.obstacle === 'safe') {
+                  remainingSafes++;
+                }
+              }
+            }
+            const cleared = result.clearedObjectives['safe'] || 0;
+            return {
+              ...obj,
+              current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingSafes)),
+            };
+          }
+
+          const cleared = result.clearedObjectives[obj.type] || 0;
           return {
             ...obj,
-            current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingOnGrid)),
+            current: Math.min(obj.target, obj.current + cleared),
           };
-        }
+        });
 
-        const cleared = result.clearedObjectives[obj.type] || 0;
-        return {
-          ...obj,
-          current: Math.min(obj.target, obj.current + cleared),
-        };
-      });
+        setCurrentLevel(prev => ({
+          ...prev,
+          objectives: updatedObjectives,
+        }));
+        setScore(nextScore);
 
-      setCurrentLevel(prev => ({
-        ...prev,
-        objectives: updatedObjectives,
-      }));
-      setScore(nextScore);
+        const isWon = checkObjectivesMet(updatedObjectives);
 
-      const isWon = checkObjectivesMet(updatedObjectives);
-
-      if (isWon) {
-        triggerFeverMode(result.newGrid, nextMoves, nextScore);
-        setIsBoardLocked(false);
-        return;
-      }
-
-      if (nextMoves <= 0) {
-        sound.playDefeat();
-        setStatus('lost');
-        setIsBoardLocked(false);
-        return;
-      }
-
-      if (!checkHasValidMoves(result.newGrid)) {
-        setIsShuffling(true);
-        setTimeout(() => {
-          setGrid(prev => shuffleBoard(prev, currentLevel.colors));
-          setIsShuffling(false);
+        if (isWon) {
+          triggerFeverMode(result.newGrid, nextMoves, nextScore);
           setIsBoardLocked(false);
-        }, 700);
-      } else {
-        setIsBoardLocked(false);
-      }
-    }, 450);
+          return;
+        }
+
+        if (nextMoves <= 0) {
+          sound.playDefeat();
+          setStatus('lost');
+          setIsBoardLocked(false);
+          return;
+        }
+
+        if (!checkHasValidMoves(result.newGrid)) {
+          setIsShuffling(true);
+          setTimeout(() => {
+            setGrid(prev => shuffleBoard(prev, currentLevel.colors));
+            setIsShuffling(false);
+            setIsBoardLocked(false);
+          }, 700);
+        } else {
+          setIsBoardLocked(false);
+        }
+      }, 450);
+    };
+
+    if (result.mergeAnimation) {
+      setActiveMerge(result.mergeAnimation);
+      sound.playComboCharge();
+      setTimeout(() => {
+        setActiveMerge(null);
+        executeBlastPhases();
+      }, 200);
+    } else {
+      executeBlastPhases();
+    }
   };
 
   const triggerFeverMode = (_currentGrid: Tile[][], leftoverMoves: number, baseScore: number) => {
@@ -446,6 +555,9 @@ export function App() {
         damagedObstacleCoords={damagedObstacleCoords}
         rocketBeams={rocketBeams}
         bombShockwaves={bombShockwaves}
+        isScreenShaking={isScreenShaking}
+        activeMerge={activeMerge}
+        scorePopups={scorePopups}
       />
 
       {/* Floating Collectibles flying to TopBar Goal Capsule */}

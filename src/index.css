@@ -91,3 +91,56 @@
 .animate-laser-beam {
   animation: laserGlow 0.35s ease-out forwards;
 }
+
+/* Board Shake / Rumble for Heavy Explosions */
+@keyframes boardRumble {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15% { transform: translate(-5px, 3px) rotate(-1deg); }
+  30% { transform: translate(5px, -3px) rotate(1deg); }
+  45% { transform: translate(-3px, -2px) rotate(-0.5deg); }
+  60% { transform: translate(3px, 2px) rotate(0.5deg); }
+  75% { transform: translate(-1px, 1px) rotate(0deg); }
+}
+
+.animate-board-rumble {
+  animation: boardRumble 0.38s ease-in-out;
+}
+
+/* Magnetic Pulse for Adjacent Boosters */
+@keyframes magneticPulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.7), inset 0 0 8px rgba(255, 255, 255, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(245, 158, 11, 1), 0 0 35px rgba(239, 68, 68, 0.8), inset 0 0 12px rgba(255, 255, 255, 0.9);
+    transform: scale(1.08);
+  }
+}
+
+.animate-booster-magnetic {
+  animation: magneticPulse 0.85s ease-in-out infinite;
+}
+
+/* Mega Fusion Orb */
+@keyframes megaFusion {
+  0% { transform: scale(0.6) rotate(0deg); opacity: 0.5; filter: brightness(1.2); }
+  50% { transform: scale(1.45) rotate(180deg); opacity: 1; filter: brightness(2.2); }
+  100% { transform: scale(1) rotate(360deg); opacity: 0.9; filter: brightness(1.5); }
+}
+
+.animate-mega-fusion {
+  animation: megaFusion 0.28s ease-out forwards;
+}
+
+/* Floating Score / Combo Text */
+@keyframes scoreFloat {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  25% { transform: translateY(-12px) scale(1.2); opacity: 1; }
+  75% { transform: translateY(-28px) scale(1.05); opacity: 0.9; }
+  100% { transform: translateY(-45px) scale(0.9); opacity: 0; }
+}
+
+.animate-score-float {
+  animation: scoreFloat 0.75s ease-out forwards;
+}

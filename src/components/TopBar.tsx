@@ -49,6 +49,18 @@ export const TopBar: React.FC<TopBarProps> = ({
         return <div className="w-7 h-7 flex items-center justify-center text-base">💄</div>;
       case 'ice':
         return <div className="w-7 h-7 flex items-center justify-center text-base">❄️</div>;
+      case 'wardrobe':
+        return (
+          <div className="w-8 h-8 flex items-center justify-center text-xl filter drop-shadow">
+            🪞
+          </div>
+        );
+      case 'safe':
+        return (
+          <div className="w-8 h-8 flex items-center justify-center text-xl filter drop-shadow">
+            💎
+          </div>
+        );
       default:
         return null;
     }

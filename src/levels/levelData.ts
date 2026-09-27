@@ -105,102 +105,104 @@ export const HANDCRAFTED_LEVELS: LevelConfig[] = [
     ]
   },
 
-  // Level 5: Magic Mirror / Propeller Combo
+  // Level 5: Introduction of the 2x2 Luxury Wardrobe (3 HP) & Magnetic Booster Merging
   {
     id: 5,
-    name: "Level 5: Magic Propeller",
-    description: "Match 9+ cubes to create a Magic Mirror! Try tapping two adjacent boosters for super combos.",
+    name: "Level 5: The Luxury Wardrobe",
+    description: "The 2x2 Luxury Wardrobe requires 3 hits to destroy! Tap the adjacent Bomb and Rocket to merge them into a 5x5 mega blast!",
     rows: 8,
     cols: 8,
     moves: 26,
     colors: ALL_COLORS,
     objectives: [
-      { type: 'armchair', target: 12, current: 0 },
-      { type: 'green', target: 30, current: 0 },
-    ],
-    layout: [
-      [null, null, null, null, null, null, null, null],
-      [null, null, 'FH', 'B', null, null, null, null],
-      [null, null, null, null, null, null, null, null],
-      ['A', 'A', null, 'DISCO', null, null, 'A', 'A'],
-      ['A', 'A', null, null, null, null, 'A', 'A'],
-      [null, null, null, null, null, null, null, null],
-      ['A', 'A', null, null, null, null, 'A', 'A'],
-      ['A', 'A', null, null, null, null, 'A', 'A'],
-    ]
-  },
-
-  // Level 6: Introduction to Wooden Crates
-  {
-    id: 6,
-    name: "Level 6: Cracking Storage",
-    description: "Smash through wooden crates and clear all armchairs.",
-    rows: 8,
-    cols: 8,
-    moves: 25,
-    colors: COLORS_4,
-    objectives: [
-      { type: 'crate', target: 8, current: 0 },
-      { type: 'armchair', target: 10, current: 0 },
-    ],
-    layout: [
-      [null, null, null, null, null, null, null, null],
-      [null, null, null, null, null, null, null, null],
-      [null, 'C', 'C', null, null, 'C', 'C', null],
-      [null, 'C', 'C', null, null, 'C', 'C', null],
-      ['A', null, null, 'FH', 'FV', null, null, 'A'],
-      ['A', 'A', null, null, null, null, 'A', 'A'],
-      ['A', 'A', 'A', null, null, 'A', 'A', 'A'],
-      [null, null, null, null, null, null, null, null],
-    ]
-  },
-
-  // Level 7: Ice Layers
-  {
-    id: 7,
-    name: "Level 7: Frosty Parlor",
-    description: "Match cubes encased in ice to shatter the frost.",
-    rows: 8,
-    cols: 8,
-    moves: 26,
-    colors: ALL_COLORS,
-    objectives: [
-      { type: 'ice', target: 12, current: 0 },
+      { type: 'wardrobe', target: 1, current: 0 },
       { type: 'armchair', target: 8, current: 0 },
     ],
     layout: [
       [null, null, null, null, null, null, null, null],
-      [null, 'I:red', 'I:red', null, null, 'I:blue', 'I:blue', null],
-      [null, 'I:red', 'I:red', null, null, 'I:blue', 'I:blue', null],
-      [null, null, null, 'B', 'B', null, null, null],
-      [null, 'I:yellow', 'I:yellow', null, null, 'I:green', 'I:green', null],
-      [null, 'I:yellow', 'I:yellow', null, null, 'I:green', 'I:green', null],
+      [null, null, 'B', 'FV', null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, 'W:wardrobe_1:tl', 'W:wardrobe_1:tr', null, null, null],
+      [null, null, null, 'W:wardrobe_1:bl', 'W:wardrobe_1:br', null, null, null],
+      [null, null, null, null, null, null, null, null],
       ['A', 'A', null, null, null, null, 'A', 'A'],
       ['A', 'A', null, null, null, null, 'A', 'A'],
     ]
   },
 
-  // Level 8: Lipstick Drop Collectibles
+  // Level 6: Introduction of Diamond Safes (2 HP)
   {
-    id: 8,
-    name: "Level 8: Lipstick Collection",
-    description: "Drop the lipsticks down to the very bottom row to collect them!",
+    id: 6,
+    name: "Level 6: Diamond Safe Vaults",
+    description: "Crack open the reinforced bank safes twice to retrieve hidden diamonds! Combine twin rockets for cross-laser sweeps.",
     rows: 8,
     cols: 8,
-    moves: 25,
+    moves: 26,
     colors: ALL_COLORS,
     objectives: [
-      { type: 'drop_item', target: 3, current: 0 },
-      { type: 'armchair', target: 10, current: 0 },
+      { type: 'safe', target: 4, current: 0 },
+      { type: 'crate', target: 8, current: 0 },
     ],
     layout: [
-      [null, 'D', null, 'D', null, 'D', null, null],
+      [null, null, null, 'FH', 'FV', null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, 'S', 'C', null, null, 'C', 'S', null],
+      [null, 'C', 'C', null, null, 'C', 'C', null],
+      [null, 'C', 'C', null, null, 'C', 'C', null],
+      [null, 'S', 'C', null, null, 'C', 'S', null],
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
-      ['A', 'A', null, 'C', null, 'C', 'A', 'A'],
+    ]
+  },
+
+  // Level 7: The Master Suite (Dual 2x2 Wardrobes & Disco Combo)
+  {
+    id: 7,
+    name: "Level 7: The Master Suite",
+    description: "Dismantle twin luxury wardrobes using Disco storm and rocket combos!",
+    rows: 8,
+    cols: 8,
+    moves: 28,
+    colors: ALL_COLORS,
+    objectives: [
+      { type: 'wardrobe', target: 2, current: 0 },
+      { type: 'armchair', target: 10, current: 0 },
+      { type: 'ice', target: 6, current: 0 },
+    ],
+    layout: [
+      [null, null, null, 'DISCO', 'B', null, null, null],
+      [null, 'I:red', null, null, null, null, 'I:blue', null],
+      [null, 'I:red', null, null, null, null, 'I:blue', null],
+      [null, 'W:wardrobe_1:tl', 'W:wardrobe_1:tr', null, null, 'W:wardrobe_2:tl', 'W:wardrobe_2:tr', null],
+      [null, 'W:wardrobe_1:bl', 'W:wardrobe_1:br', null, null, 'W:wardrobe_2:bl', 'W:wardrobe_2:br', null],
+      [null, 'I:yellow', null, null, null, null, 'I:green', null],
+      ['A', 'A', 'A', null, null, 'A', 'A', 'A'],
       ['A', 'A', null, null, null, null, 'A', 'A'],
+    ]
+  },
+
+  // Level 8: Penthouse Grand Finale (Wardrobe, Safes, Crates, Lipsticks)
+  {
+    id: 8,
+    name: "Level 8: Penthouse Makeover",
+    description: "The grand makeover challenge! Crack diamond safes, shatter the wardrobe, and drop cosmetics to the floor!",
+    rows: 8,
+    cols: 8,
+    moves: 30,
+    colors: ALL_COLORS,
+    objectives: [
+      { type: 'wardrobe', target: 1, current: 0 },
+      { type: 'safe', target: 4, current: 0 },
+      { type: 'drop_item', target: 2, current: 0 },
+    ],
+    layout: [
+      [null, 'D', null, 'B', 'B', null, 'D', null],
       [null, null, null, null, null, null, null, null],
-      ['A', null, null, null, null, null, null, 'A'],
+      [null, 'S', null, null, null, null, 'S', null],
+      [null, null, null, 'W:wardrobe_1:tl', 'W:wardrobe_1:tr', null, null, null],
+      [null, null, null, 'W:wardrobe_1:bl', 'W:wardrobe_1:br', null, null, null],
+      [null, 'S', null, null, null, null, 'S', null],
+      [null, 'C2', 'C2', null, null, 'C2', 'C2', null],
       [null, null, null, null, null, null, null, null],
     ]
   },

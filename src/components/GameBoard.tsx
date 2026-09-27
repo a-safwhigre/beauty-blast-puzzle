@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Tile, TileColor, BoosterType, ActiveTool, RocketBeam, Shockwave } from '../types/game';
+import { Tile, TileColor, BoosterType, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup } from '../types/game';
 
 interface GameBoardProps {
   grid: Tile[][];
@@ -13,6 +13,9 @@ interface GameBoardProps {
   damagedObstacleCoords?: Set<string>;
   rocketBeams?: RocketBeam[];
   bombShockwaves?: Shockwave[];
+  isScreenShaking?: boolean;
+  activeMerge?: BoosterMergeAnimation | null;
+  scorePopups?: ScorePopup[];
 }
 
 interface Particle {
@@ -37,6 +40,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   damagedObstacleCoords = new Set(),
   rocketBeams = [],
   bombShockwaves = [],
+  isScreenShaking = false,
+  activeMerge = null,
+  scorePopups = [],
 }) => {
   const rows = grid.length;
   const cols = grid[0]?.length || 6;
@@ -170,6 +176,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
+  const getWardrobeRoundedClasses = (part?: string) => {
+    switch (part) {
+      case 'tl': return 'rounded-tl-2xl rounded-tr-sm rounded-bl-sm rounded-br-none';
+      case 'tr': return 'rounded-tr-2xl rounded-tl-sm rounded-br-sm rounded-bl-none';
+      case 'bl': return 'rounded-bl-2xl rounded-tl-sm rounded-br-sm rounded-tr-none';
+      case 'br': return 'rounded-br-2xl rounded-tr-sm rounded-bl-sm rounded-tl-none';
+      default: return 'rounded-2xl';
+    }
+  };
+
   const getBoosterBadge = (boosterType: BoosterType) => {
     switch (boosterType) {
       case 'firecracker_h':
@@ -231,7 +247,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       <div className="w-full flex-1 flex items-center justify-center z-10 p-1">
         <div
           ref={boardRef}
-          className="w-full max-w-[440px] aspect-square bg-[#221f26]/95 p-2 sm:p-2.5 rounded-3xl border-4 border-white shadow-2xl relative flex items-center justify-center overflow-hidden"
+          className={`w-full max-w-[440px] aspect-square bg-[#221f26]/95 p-2 sm:p-2.5 rounded-3xl border-4 border-white shadow-2xl relative flex items-center justify-center overflow-hidden ${
+            isScreenShaking ? 'animate-board-rumble' : ''
+          }`}
           style={{
             boxShadow: '0 20px 40px -10px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.4)',
           }}
@@ -332,6 +350,87 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     </div>
                   )}
 
+                  {/* MULTI-TILE 2x2 LUXURY WARDROBE (衣柜) */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'wardrobe' && (
+                    <div
+                      onClick={() => handleTileClickInternal(r, c)}
+                      className={`w-full h-full ${getWardrobeRoundedClasses(tile.part)} bg-gradient-to-br from-amber-900 via-amber-950 to-stone-900 border-2 border-amber-600/90 shadow-2xl flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition-all overflow-hidden ${animClass}`}
+                      style={{
+                        boxShadow: 'inset 0 2px 4px rgba(251,191,36,0.3), 0 4px 8px rgba(0,0,0,0.6)',
+                      }}
+                    >
+                      <div className="w-full h-full flex flex-col items-center justify-center relative pointer-events-none p-1">
+                        {tile.part === 'tl' && (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xl filter drop-shadow">👑</span>
+                            <span className="text-[8px] font-black text-amber-300 uppercase tracking-tighter">WARDROBE</span>
+                          </div>
+                        )}
+                        {tile.part === 'tr' && (
+                          <div className="flex flex-col items-center">
+                            <span className="text-2xl filter drop-shadow">🪞</span>
+                          </div>
+                        )}
+                        {tile.part === 'bl' && (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xl filter drop-shadow">🗄️</span>
+                            <span className="text-[7px] font-black text-amber-400">BRASS</span>
+                          </div>
+                        )}
+                        {tile.part === 'br' && (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xl filter drop-shadow">🗝️</span>
+                            <span className="text-[8px] font-black px-1 rounded bg-black/75 text-amber-300">
+                              HP {tile.hitPoints || 1}
+                            </span>
+                          </div>
+                        )}
+                        {/* Progressive Cracking on Damage */}
+                        {tile.hitPoints === 2 && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-70">
+                            <svg className="w-full h-full stroke-amber-300 fill-none stroke-[2]" viewBox="0 0 100 100">
+                              <path d="M 20 10 L 45 40 L 35 60 L 60 90 M 45 40 L 75 30" />
+                            </svg>
+                          </div>
+                        )}
+                        {tile.hitPoints === 1 && (
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-90">
+                            <svg className="w-full h-full stroke-rose-400 fill-none stroke-[2.5]" viewBox="0 0 100 100">
+                              <path d="M 10 20 L 50 50 L 30 75 L 85 95 M 50 50 L 90 25 M 50 50 L 55 90 M 20 80 L 60 70" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MULTI-HIT STEEL SAFE (保险箱) */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'safe' && (
+                    <div
+                      onClick={() => handleTileClickInternal(r, c)}
+                      className={`w-full h-full rounded-2xl flex flex-col items-center justify-center relative cursor-pointer shadow-xl border-2 border-cyan-400/80 transition-all active:scale-95 bg-gradient-to-br from-slate-700 via-slate-800 to-zinc-950 ${animClass}`}
+                      style={{
+                        boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.4), 0 4px 8px rgba(0,0,0,0.6)',
+                      }}
+                    >
+                      <div className="flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-xl sm:text-2xl filter drop-shadow">
+                          {(tile.hitPoints || 2) > 1 ? '🔐' : '💎'}
+                        </span>
+                        <span className="text-[9px] font-black uppercase text-cyan-300 -mt-0.5">
+                          {(tile.hitPoints || 2) > 1 ? 'SAFE (2)' : 'CRACKED!'}
+                        </span>
+                      </div>
+                      {tile.hitPoints === 1 && (
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-85">
+                          <svg className="w-full h-full stroke-cyan-200 fill-none stroke-[2]" viewBox="0 0 100 100">
+                            <path d="M 20 15 L 50 50 L 80 85 M 50 50 L 85 30 M 50 50 L 25 80" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Drop Item (Lipstick) */}
                   {tile.kind === 'obstacle' && tile.obstacle === 'drop_item' && (
                     <div
@@ -350,7 +449,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     <button
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className={`w-full h-full rounded-2xl border-2 border-amber-200 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all overflow-hidden ${animClass}`}
+                      className={`w-full h-full rounded-2xl border-2 border-amber-200 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all overflow-hidden ${animClass} ${
+                        tile.hasAdjacentBooster ? 'animate-booster-magnetic ring-4 ring-amber-300/90' : ''
+                      }`}
                       style={{
                         background: 'repeating-linear-gradient(45deg, #EF4444, #EF4444 6px, #FBBF24 6px, #FBBF24 12px, #3B82F6 12px, #3B82F6 18px)',
                         boxShadow: '0 0 15px rgba(251, 191, 36, 0.8), inset 0 2px 4px rgba(255,255,255,0.7)',
@@ -364,6 +465,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       <span className="absolute bottom-0.5 px-1 rounded bg-black/80 text-[8px] font-black text-amber-300 uppercase pointer-events-none">
                         {tile.booster === 'firecracker_h' ? 'ROW' : 'COL'}
                       </span>
+                      {tile.hasAdjacentBooster && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-900 text-[10px] font-black flex items-center justify-center shadow-lg border border-white animate-spin">
+                          ⚡
+                        </span>
+                      )}
                     </button>
                   )}
 
@@ -372,13 +478,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     <button
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className={`w-full h-full rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-950 to-black border-2 border-amber-400 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all animate-pulse ${animClass}`}
+                      className={`w-full h-full rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-950 to-black border-2 border-amber-400 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all animate-pulse ${animClass} ${
+                        tile.hasAdjacentBooster ? 'animate-booster-magnetic ring-4 ring-amber-300/90' : ''
+                      }`}
                       style={{
                         boxShadow: '0 0 16px rgba(239, 68, 68, 0.8), inset 0 2px 4px rgba(255,255,255,0.4)',
                       }}
                     >
                       <span className="text-2xl sm:text-3xl filter drop-shadow pointer-events-none">💣</span>
                       <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+                      {tile.hasAdjacentBooster && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-900 text-[10px] font-black flex items-center justify-center shadow-lg border border-white animate-spin">
+                          ⚡
+                        </span>
+                      )}
                     </button>
                   )}
 
@@ -387,9 +500,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     <button
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className={`w-full h-full rounded-2xl bg-gradient-to-tr from-pink-500 via-indigo-500 to-amber-300 border-2 border-white shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all ${animClass}`}
+                      className={`w-full h-full rounded-2xl bg-gradient-to-tr from-pink-500 via-indigo-500 to-amber-300 border-2 border-white shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all ${animClass} ${
+                        tile.hasAdjacentBooster ? 'animate-booster-magnetic ring-4 ring-amber-300/90' : ''
+                      }`}
                     >
                       <span className="text-2xl sm:text-3xl filter drop-shadow pointer-events-none">🪩</span>
+                      {tile.hasAdjacentBooster && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-900 text-[10px] font-black flex items-center justify-center shadow-lg border border-white animate-spin">
+                          ⚡
+                        </span>
+                      )}
                     </button>
                   )}
 
@@ -505,6 +625,39 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 height: `${(3 / rows) * 100}%`,
               }}
             />
+          ))}
+
+          {/* 6. Booster Mega Fusion Orb */}
+          {activeMerge && (
+            <div
+              className="absolute z-50 pointer-events-none flex items-center justify-center animate-mega-fusion"
+              style={{
+                left: `${(activeMerge.toCol / cols) * 100}%`,
+                top: `${(activeMerge.toRow / rows) * 100}%`,
+                width: `${100 / cols}%`,
+                height: `${100 / rows}%`,
+              }}
+            >
+              <div className="w-14 h-14 rounded-full bg-gradient-to-r from-amber-400 via-rose-500 to-indigo-500 flex items-center justify-center text-3xl shadow-[0_0_35px_rgba(245,158,11,1)] border-2 border-white animate-spin">
+                ⚡
+              </div>
+            </div>
+          )}
+
+          {/* 7. Floating Score / Combo Popups */}
+          {scorePopups.map(popup => (
+            <div
+              key={popup.id}
+              className="absolute z-50 pointer-events-none font-black text-sm sm:text-base drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] animate-score-float whitespace-nowrap"
+              style={{
+                left: `${popup.x}%`,
+                top: `${popup.y}%`,
+                color: popup.color,
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              {popup.text}
+            </div>
           ))}
         </div>
       </div>

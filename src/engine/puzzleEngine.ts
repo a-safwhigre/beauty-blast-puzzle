@@ -1,4 +1,4 @@
-import { Tile, TileColor, BoosterType, LevelConfig, Position, Objective } from '../types/game';
+import { Tile, TileColor, BoosterType, LevelConfig, Position, Objective, BoosterMergeAnimation } from '../types/game';
 import { sound } from './soundEngine';
 
 export interface BlastResult {
@@ -7,6 +7,9 @@ export interface BlastResult {
   damagedObstacles: Position[];
   rocketBeams?: { orientation: 'h' | 'v'; index: number }[];
   bombShockwaves?: Position[];
+  mergeAnimation?: BoosterMergeAnimation;
+  comboPopupText?: string;
+  screenShake?: boolean;
   blastedCount: number;
   clearedObjectives: { [key: string]: number };
   scoreGained: number;
@@ -90,6 +93,32 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
             col: c,
             kind: 'obstacle',
             obstacle: 'drop_item',
+          });
+        } else if (code.startsWith('W:') || code === 'W') {
+          const parts = code.split(':');
+          const groupId = parts[1] || 'wardrobe_1';
+          const part = (parts[2] as 'tl' | 'tr' | 'bl' | 'br') || 'single';
+          row.push({
+            id: createTileId(),
+            row: r,
+            col: c,
+            kind: 'obstacle',
+            obstacle: 'wardrobe',
+            groupId,
+            part,
+            hitPoints: 3,
+            maxHitPoints: 3,
+          });
+        } else if (code.startsWith('S') || code === 'safe') {
+          const hp = code === 'S3' ? 3 : (code === 'S1' ? 1 : 2);
+          row.push({
+            id: createTileId(),
+            row: r,
+            col: c,
+            kind: 'obstacle',
+            obstacle: 'safe',
+            hitPoints: hp,
+            maxHitPoints: hp,
           });
         } else if (code === 'FH' || code === 'RH') {
           row.push({
@@ -237,6 +266,15 @@ export function updateBoosterHighlights(grid: Tile[][]): Tile[][] {
     }
   }
 
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (newGrid[r][c].kind === 'booster') {
+        const hasAdj = findAdjacentBooster(newGrid, r, c) !== null;
+        newGrid[r][c].hasAdjacentBooster = hasAdj;
+      }
+    }
+  }
+
   return newGrid;
 }
 
@@ -284,6 +322,9 @@ export function handleTileClick(
   const clearedObjectives: { [key: string]: number } = {};
   const rocketBeams: { orientation: 'h' | 'v'; index: number }[] = [];
   const bombShockwaves: Position[] = [];
+  let mergeAnimation: BoosterMergeAnimation | undefined = undefined;
+  let comboPopupText: string | undefined = undefined;
+  let screenShake = false;
 
   // Case 1: Tapping a Booster
   if (clicked.kind === 'booster' && clicked.booster) {
@@ -295,7 +336,30 @@ export function handleTileClick(
       tilesToBlast = executeBoosterCombo(grid, clicked.booster, otherBooster, row, col, adjacent);
 
       const comboKey = [clicked.booster, otherBooster].sort().join('+');
-      if (comboKey.includes('bomb') && (comboKey.includes('firecracker') || comboKey.includes('rocket'))) {
+      mergeAnimation = {
+        id: `merge-${Date.now()}`,
+        fromRow: adjacent.row,
+        fromCol: adjacent.col,
+        toRow: row,
+        toCol: col,
+        boosterType: otherBooster,
+        comboType: comboKey,
+      };
+      screenShake = true;
+
+      if (comboKey === 'disco+disco') {
+        comboPopupText = '🌟 SUPERNOVA CLEAR!';
+        sound.playMegaBoom();
+      } else if (comboKey.includes('disco')) {
+        comboPopupText = '🪩 DISCO STORM!';
+        sound.playDisco();
+      } else if (comboKey === 'bomb+bomb') {
+        comboPopupText = '💥 MEGA BOMB 5x5!';
+        sound.playMegaBoom();
+        bombShockwaves.push({ row, col }, { row: adjacent.row, col: adjacent.col });
+      } else if (comboKey.includes('bomb') && (comboKey.includes('firecracker') || comboKey.includes('rocket'))) {
+        comboPopupText = '🚀 ROCKET BARRAGE!';
+        sound.playMegaBoom();
         for (let ro = Math.max(0, row - 1); ro <= Math.min(rows - 1, row + 1); ro++) {
           rocketBeams.push({ orientation: 'h', index: ro });
         }
@@ -303,9 +367,9 @@ export function handleTileClick(
           rocketBeams.push({ orientation: 'v', index: co });
         }
         bombShockwaves.push({ row, col });
-      } else if (comboKey.includes('bomb')) {
-        bombShockwaves.push({ row, col });
       } else {
+        comboPopupText = '⚡ CROSS LASER!';
+        sound.playRocket();
         rocketBeams.push({ orientation: 'h', index: row });
         rocketBeams.push({ orientation: 'v', index: col });
       }
@@ -318,6 +382,7 @@ export function handleTileClick(
         rocketBeams.push({ orientation: 'v', index: col });
       } else if (clicked.booster === 'bomb') {
         bombShockwaves.push({ row, col });
+        screenShake = true;
       }
     }
   }
@@ -333,13 +398,16 @@ export function handleTileClick(
     // Check if cluster earns a booster
     if (cluster.length >= 9) {
       spawnedBooster = { row, col, type: 'disco' };
+      comboPopupText = '🪩 DISCO UNLOCKED!';
       sound.playDisco();
     } else if (cluster.length >= 7) {
       spawnedBooster = { row, col, type: 'bomb' };
+      comboPopupText = '💣 BOMB CRAFTED!';
       sound.playBomb();
     } else if (cluster.length >= 5) {
       const type: BoosterType = Math.random() > 0.5 ? 'firecracker_h' : 'firecracker_v';
       spawnedBooster = { row, col, type };
+      comboPopupText = '🧨 ROCKET CRAFTED!';
       sound.playRocket();
     } else {
       sound.playPop(Math.floor(cluster.length / 2));
@@ -352,7 +420,7 @@ export function handleTileClick(
   const newGrid: Tile[][] = grid.map(r => r.map(c => ({ ...c })));
   const blastSet = new Set(tilesToBlast.map(p => `${p.row},${p.col}`));
 
-  // Check adjacent obstacles to blast (Armchairs, Crates, Ice)
+  // Check adjacent obstacles to blast (Armchairs, Crates, Ice, Wardrobes, Safes)
   const directions = [
     { r: -1, c: 0 },
     { r: 1, c: 0 },
@@ -376,7 +444,33 @@ export function handleTileClick(
 
     // Check if the directly blasted tile itself is an obstacle
     if (t.kind === 'obstacle') {
-      if (t.obstacle === 'armchair') {
+      if (t.groupId) {
+        if (!damagedObstacles.has(t.groupId)) {
+          damagedObstacles.add(t.groupId);
+          const groupCells: Position[] = [];
+          for (let gr = 0; gr < rows; gr++) {
+            for (let gc = 0; gc < cols; gc++) {
+              if (newGrid[gr][gc].groupId === t.groupId) {
+                groupCells.push({ row: gr, col: gc });
+              }
+            }
+          }
+          const newHp = (t.hitPoints || 3) - 1;
+          groupCells.forEach(cell => {
+            newGrid[cell.row][cell.col].hitPoints = newHp;
+            damagedObstaclePositions.push({ row: cell.row, col: cell.col });
+          });
+          sound.playCrateHit();
+
+          if (newHp <= 0) {
+            groupCells.forEach(cell => {
+              blastSet.add(`${cell.row},${cell.col}`);
+            });
+            clearedObjectives[t.obstacle || 'wardrobe'] = (clearedObjectives[t.obstacle || 'wardrobe'] || 0) + 1;
+            sound.playBomb();
+          }
+        }
+      } else if (t.obstacle === 'armchair') {
         clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
         damagedObstaclePositions.push({ row: p.row, col: p.col });
         sound.playCrateHit();
@@ -386,6 +480,14 @@ export function handleTileClick(
         sound.playCrateHit();
         if (t.hitPoints <= 0) {
           clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+        }
+      } else if (t.obstacle === 'safe') {
+        t.hitPoints = (t.hitPoints || 2) - 1;
+        damagedObstaclePositions.push({ row: p.row, col: p.col });
+        sound.playCrateHit();
+        if (t.hitPoints <= 0) {
+          clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
+          sound.playBomb();
         }
       }
     }
@@ -399,8 +501,33 @@ export function handleTileClick(
         if (!damagedObstacles.has(key) && !blastSet.has(key)) {
           const adjTile = newGrid[nr][nc];
           if (adjTile.kind === 'obstacle') {
-            if (adjTile.obstacle === 'armchair') {
-              // Armchair eliminated!
+            if (adjTile.groupId) {
+              if (!damagedObstacles.has(adjTile.groupId)) {
+                damagedObstacles.add(adjTile.groupId);
+                const groupCells: Position[] = [];
+                for (let gr = 0; gr < rows; gr++) {
+                  for (let gc = 0; gc < cols; gc++) {
+                    if (newGrid[gr][gc].groupId === adjTile.groupId) {
+                      groupCells.push({ row: gr, col: gc });
+                    }
+                  }
+                }
+                const newHp = (adjTile.hitPoints || 3) - 1;
+                groupCells.forEach(cell => {
+                  newGrid[cell.row][cell.col].hitPoints = newHp;
+                  damagedObstaclePositions.push({ row: cell.row, col: cell.col });
+                });
+                sound.playCrateHit();
+
+                if (newHp <= 0) {
+                  groupCells.forEach(cell => {
+                    blastSet.add(`${cell.row},${cell.col}`);
+                  });
+                  clearedObjectives[adjTile.obstacle || 'wardrobe'] = (clearedObjectives[adjTile.obstacle || 'wardrobe'] || 0) + 1;
+                  sound.playBomb();
+                }
+              }
+            } else if (adjTile.obstacle === 'armchair') {
               damagedObstacles.add(key);
               damagedObstaclePositions.push({ row: nr, col: nc });
               blastSet.add(key);
@@ -414,6 +541,16 @@ export function handleTileClick(
               if (adjTile.hitPoints <= 0) {
                 blastSet.add(key);
                 clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+              }
+            } else if (adjTile.obstacle === 'safe') {
+              damagedObstacles.add(key);
+              damagedObstaclePositions.push({ row: nr, col: nc });
+              adjTile.hitPoints = (adjTile.hitPoints || 2) - 1;
+              sound.playCrateHit();
+              if (adjTile.hitPoints <= 0) {
+                blastSet.add(key);
+                clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
+                sound.playBomb();
               }
             }
           } else if (adjTile.iceCover) {
@@ -465,6 +602,9 @@ export function handleTileClick(
     damagedObstacles: damagedObstaclePositions,
     rocketBeams: rocketBeams.length > 0 ? rocketBeams : undefined,
     bombShockwaves: bombShockwaves.length > 0 ? bombShockwaves : undefined,
+    mergeAnimation,
+    comboPopupText,
+    screenShake: screenShake || undefined,
     blastedCount: blastSet.size,
     clearedObjectives,
     scoreGained,
@@ -684,10 +824,26 @@ export function applyHammerTool(
 
   sound.playBomb();
   if (target.kind === 'obstacle') {
-    if (target.obstacle === 'armchair') {
+    if (target.groupId) {
+      clearedObjectives[target.obstacle || 'wardrobe'] = (clearedObjectives[target.obstacle || 'wardrobe'] || 0) + 1;
+      for (let r = 0; r < newGrid.length; r++) {
+        for (let c = 0; c < newGrid[r].length; c++) {
+          if (newGrid[r][c].groupId === target.groupId) {
+            newGrid[r][c] = {
+              id: createTileId(),
+              row: r,
+              col: c,
+              kind: 'empty',
+            };
+          }
+        }
+      }
+    } else if (target.obstacle === 'armchair') {
       clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
     } else if (target.obstacle === 'crate') {
       clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+    } else if (target.obstacle === 'safe') {
+      clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
     }
   } else if (target.kind === 'color' && target.color) {
     clearedObjectives[target.color] = (clearedObjectives[target.color] || 0) + 1;

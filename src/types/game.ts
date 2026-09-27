@@ -2,7 +2,7 @@ export type TileColor = 'red' | 'yellow' | 'blue' | 'green' | 'cyan';
 
 export type BoosterType = 'firecracker_h' | 'firecracker_v' | 'bomb' | 'disco';
 
-export type ObstacleType = 'armchair' | 'crate' | 'drop_item';
+export type ObstacleType = 'armchair' | 'crate' | 'drop_item' | 'wardrobe' | 'safe';
 
 export type TileKind = 'color' | 'booster' | 'obstacle' | 'empty';
 
@@ -15,15 +15,19 @@ export interface Tile {
   booster?: BoosterType;
   obstacle?: ObstacleType;
   hitPoints?: number;
+  maxHitPoints?: number;
+  groupId?: string;
+  part?: 'tl' | 'tr' | 'bl' | 'br' | 'single';
   iceCover?: boolean;
   isFalling?: boolean;
   isBlasting?: boolean;
   isWiggling?: boolean;
+  hasAdjacentBooster?: boolean;
   spawnRow?: number;
   highlightBooster?: BoosterType | null;
 }
 
-export type ObjectiveType = TileColor | 'armchair' | 'crate' | 'drop_item' | 'ice';
+export type ObjectiveType = TileColor | 'armchair' | 'crate' | 'drop_item' | 'ice' | 'wardrobe' | 'safe';
 
 export interface Objective {
   type: ObjectiveType;
@@ -80,4 +84,22 @@ export interface Shockwave {
   id: string;
   row: number;
   col: number;
+}
+
+export interface BoosterMergeAnimation {
+  id: string;
+  fromRow: number;
+  fromCol: number;
+  toRow: number;
+  toCol: number;
+  boosterType: BoosterType;
+  comboType: string;
+}
+
+export interface ScorePopup {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  color: string;
 }
