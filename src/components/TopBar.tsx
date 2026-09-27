@@ -61,6 +61,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             💎
           </div>
         );
+      case 'foam':
+        return (
+          <div className="w-8 h-8 flex items-center justify-center text-xl filter drop-shadow animate-bubble-glimmer">
+            🫧
+          </div>
+        );
       default:
         return null;
     }

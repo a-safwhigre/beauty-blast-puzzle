@@ -207,26 +207,26 @@ export const HANDCRAFTED_LEVELS: LevelConfig[] = [
     ]
   },
 
-  // Level 9: Double-layer Fortress
+  // Level 9: Bubble Bath Overflow (Spreading Foam Hazard)
   {
     id: 9,
-    name: "Level 9: The Fortified Hall",
-    description: "Heavy reinforced crates block access to the bottom sofas.",
+    name: "Level 9: Bubble Bath Overflow",
+    description: "Warning: Bubble foam multiplies every turn it's not damaged, increasing your goal count! Keep it contained with rapid combos.",
     rows: 8,
     cols: 8,
     moves: 26,
     colors: ALL_COLORS,
     objectives: [
-      { type: 'crate', target: 12, current: 0 },
-      { type: 'armchair', target: 12, current: 0 },
+      { type: 'foam', target: 6, current: 0 },
+      { type: 'armchair', target: 8, current: 0 },
     ],
     layout: [
+      [null, null, 'B', null, null, 'B', null, null],
       [null, null, null, null, null, null, null, null],
+      ['FOAM', 'FOAM', null, 'FH', 'FV', null, 'FOAM', 'FOAM'],
+      ['FOAM', null, null, null, null, null, null, 'FOAM'],
       [null, null, null, null, null, null, null, null],
-      ['C2', 'C2', null, 'FH', 'FV', null, 'C2', 'C2'],
-      ['C2', 'C2', null, null, null, null, 'C2', 'C2'],
-      [null, null, null, 'B', null, null, null, null],
-      ['A', 'A', 'A', null, null, 'A', 'A', 'A'],
+      ['A', 'A', null, null, null, null, 'A', 'A'],
       ['A', 'A', 'A', null, null, 'A', 'A', 'A'],
       [null, null, null, null, null, null, null, null],
     ]
@@ -290,22 +290,26 @@ export function generateProceduralLevel(levelNum: number, difficulty: 'easy' | '
   let armchairCount = 12;
   let crateCount = 6;
   let dropCount = 1;
+  let foamCount = 0;
 
   if (difficulty === 'easy') {
     moves = 28;
     armchairCount = 8;
     crateCount = 4;
     dropCount = 0;
+    foamCount = 0;
   } else if (difficulty === 'hard') {
     moves = 24;
     armchairCount = 16;
     crateCount = 10;
     dropCount = 2;
+    foamCount = 3;
   } else if (difficulty === 'insane') {
     moves = 20;
     armchairCount = 20;
     crateCount = 14;
     dropCount = 3;
+    foamCount = 5;
   }
 
   const layout: (string | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null));
@@ -332,13 +336,24 @@ export function generateProceduralLevel(levelNum: number, difficulty: 'easy' | '
     }
   }
 
+  // Place foam hazard if configured
+  let placedFoam = 0;
+  while (placedFoam < foamCount) {
+    const r = Math.floor(Math.random() * 2) + 2;
+    const c = Math.floor(Math.random() * cols);
+    if (!layout[r][c]) {
+      layout[r][c] = 'FOAM';
+      placedFoam++;
+    }
+  }
+
   // Pre-seed a helpful firecracker
   layout[1][Math.floor(cols / 2)] = 'FH';
 
   return {
     id: levelNum,
     name: `Puzzle #${levelNum} (${difficulty.toUpperCase()})`,
-    description: `Procedural challenge with ${placedArmchairs} armchairs and ${placedCrates} crates!`,
+    description: `Procedural challenge with ${placedArmchairs} armchairs${placedCrates > 0 ? `, ${placedCrates} crates` : ''}${placedFoam > 0 ? `, and ${placedFoam} multiplying foam hazards` : ''}!`,
     rows,
     cols,
     moves,
@@ -346,6 +361,7 @@ export function generateProceduralLevel(levelNum: number, difficulty: 'easy' | '
     objectives: [
       { type: 'armchair', target: placedArmchairs, current: 0 },
       ...(placedCrates > 0 ? [{ type: 'crate' as const, target: placedCrates, current: 0 }] : []),
+      ...(placedFoam > 0 ? [{ type: 'foam' as const, target: placedFoam, current: 0 }] : []),
       ...(dropCount > 0 ? [{ type: 'drop_item' as const, target: dropCount, current: 0 }] : []),
     ],
     layout,

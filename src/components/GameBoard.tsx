@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Tile, TileColor, BoosterType, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup } from '../types/game';
+import { Tile, TileColor, BoosterType, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup, FoamSpreadAnimation } from '../types/game';
 
 interface GameBoardProps {
   grid: Tile[][];
@@ -16,6 +16,7 @@ interface GameBoardProps {
   isScreenShaking?: boolean;
   activeMerge?: BoosterMergeAnimation | null;
   scorePopups?: ScorePopup[];
+  foamSpreadAnimation?: FoamSpreadAnimation | null;
 }
 
 interface Particle {
@@ -43,6 +44,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   isScreenShaking = false,
   activeMerge = null,
   scorePopups = [],
+  foamSpreadAnimation = null,
 }) => {
   const rows = grid.length;
   const cols = grid[0]?.length || 6;
@@ -431,6 +433,31 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     </div>
                   )}
 
+                  {/* SPREADING HAZARD: Salon Bubble Foam (泡沫) */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'foam' && (
+                    <div
+                      onClick={() => handleTileClickInternal(r, c)}
+                      className={`w-full h-full rounded-2xl bg-gradient-to-tr from-pink-300 via-purple-300 to-indigo-200 border-2 border-white shadow-xl flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition-all overflow-hidden animate-bubble-glimmer ${animClass}`}
+                      style={{
+                        boxShadow: '0 4px 12px rgba(236,72,153,0.35), inset 0 2px 5px rgba(255,255,255,0.85)',
+                      }}
+                    >
+                      {/* Bubbly texture & reflections */}
+                      <div className="absolute inset-0 bg-white/20 rounded-2xl pointer-events-none" />
+                      <div className="absolute top-1 left-2 w-3 h-3 rounded-full bg-white/60 blur-[0.5px] pointer-events-none" />
+                      <div className="absolute bottom-1 right-2 w-2 h-2 rounded-full bg-white/50 blur-[0.5px] pointer-events-none" />
+                      
+                      <div className="flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-2xl sm:text-3xl filter drop-shadow animate-pulse">
+                          🫧
+                        </span>
+                        <span className="text-[8px] font-black uppercase text-purple-950 tracking-wider -mt-1 bg-white/60 px-1 rounded-full">
+                          FOAM
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Drop Item (Lipstick) */}
                   {tile.kind === 'obstacle' && tile.obstacle === 'drop_item' && (
                     <div
@@ -659,6 +686,24 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               {popup.text}
             </div>
           ))}
+
+          {/* 8. Foam Spreading Expansion Animation */}
+          {foamSpreadAnimation && (
+            <div
+              key={foamSpreadAnimation.id}
+              className="absolute z-40 pointer-events-none flex items-center justify-center animate-foam-expand"
+              style={{
+                left: `${(foamSpreadAnimation.toCol / cols) * 100}%`,
+                top: `${(foamSpreadAnimation.toRow / rows) * 100}%`,
+                width: `${100 / cols}%`,
+                height: `${100 / rows}%`,
+              }}
+            >
+              <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-pink-300 via-purple-300 to-indigo-200 border-2 border-white shadow-[0_0_20px_rgba(236,72,153,0.8)] flex items-center justify-center text-3xl">
+                🫧
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

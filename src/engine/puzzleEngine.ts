@@ -1,4 +1,4 @@
-import { Tile, TileColor, BoosterType, LevelConfig, Position, Objective, BoosterMergeAnimation } from '../types/game';
+import { Tile, TileColor, BoosterType, LevelConfig, Position, Objective, BoosterMergeAnimation, FoamSpreadAnimation } from '../types/game';
 import { sound } from './soundEngine';
 
 export interface BlastResult {
@@ -10,6 +10,8 @@ export interface BlastResult {
   mergeAnimation?: BoosterMergeAnimation;
   comboPopupText?: string;
   screenShake?: boolean;
+  foamSpreadAnimation?: FoamSpreadAnimation;
+  foamSpreadOccurred?: boolean;
   blastedCount: number;
   clearedObjectives: { [key: string]: number };
   scoreGained: number;
@@ -119,6 +121,16 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
             obstacle: 'safe',
             hitPoints: hp,
             maxHitPoints: hp,
+          });
+        } else if (code === 'F' || code === 'FOAM') {
+          row.push({
+            id: createTileId(),
+            row: r,
+            col: c,
+            kind: 'obstacle',
+            obstacle: 'foam',
+            hitPoints: 1,
+            maxHitPoints: 1,
           });
         } else if (code === 'FH' || code === 'RH') {
           row.push({
@@ -489,6 +501,11 @@ export function handleTileClick(
           clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
           sound.playBomb();
         }
+      } else if (t.obstacle === 'foam') {
+        clearedObjectives['foam'] = (clearedObjectives['foam'] || 0) + 1;
+        damagedObstaclePositions.push({ row: p.row, col: p.col });
+        blastSet.add(`${p.row},${p.col}`);
+        sound.playPop(3);
       }
     }
 
@@ -552,6 +569,12 @@ export function handleTileClick(
                 clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
                 sound.playBomb();
               }
+            } else if (adjTile.obstacle === 'foam') {
+              damagedObstacles.add(key);
+              damagedObstaclePositions.push({ row: nr, col: nc });
+              blastSet.add(key);
+              clearedObjectives['foam'] = (clearedObjectives['foam'] || 0) + 1;
+              sound.playPop(3);
             }
           } else if (adjTile.iceCover) {
             damagedObstacles.add(key);
@@ -588,6 +611,62 @@ export function handleTileClick(
   // Apply Gravity and Refill Columns
   applyGravityAndRefill(newGrid, allowedColors, clearedObjectives);
 
+  // Spreading Hazard Logic: Bubble Foam
+  // If foam was NOT damaged on this turn, check if any foam tiles exist and have room to spread
+  let foamSpreadAnimation: FoamSpreadAnimation | undefined = undefined;
+  let foamSpreadOccurred = false;
+
+  const foamDamagedThisTurn = (clearedObjectives['foam'] || 0) > 0;
+  if (!foamDamagedThisTurn) {
+    const foamTiles: Position[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (newGrid[r][c].kind === 'obstacle' && newGrid[r][c].obstacle === 'foam') {
+          foamTiles.push({ row: r, col: c });
+        }
+      }
+    }
+
+    if (foamTiles.length > 0) {
+      // Find candidate neighbors with room (color cubes, not ice-covered)
+      const spreadCandidates: { from: Position; to: Position }[] = [];
+      foamTiles.forEach(ft => {
+        directions.forEach(d => {
+          const nr = ft.row + d.r;
+          const nc = ft.col + d.c;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+            const neighbor = newGrid[nr][nc];
+            // Room to spread: standard color cube
+            if (neighbor.kind === 'color' && !neighbor.iceCover) {
+              spreadCandidates.push({ from: ft, to: { row: nr, col: nc } });
+            }
+          }
+        });
+      });
+
+      if (spreadCandidates.length > 0) {
+        const chosen = spreadCandidates[Math.floor(Math.random() * spreadCandidates.length)];
+        newGrid[chosen.to.row][chosen.to.col] = {
+          id: createTileId(),
+          row: chosen.to.row,
+          col: chosen.to.col,
+          kind: 'obstacle',
+          obstacle: 'foam',
+          hitPoints: 1,
+          maxHitPoints: 1,
+        };
+        foamSpreadAnimation = {
+          id: `foam-${Date.now()}`,
+          fromRow: chosen.from.row,
+          fromCol: chosen.from.col,
+          toRow: chosen.to.row,
+          toCol: chosen.to.col,
+        };
+        foamSpreadOccurred = true;
+      }
+    }
+  }
+
   // Update booster indicators
   const finalGrid = updateBoosterHighlights(newGrid);
 
@@ -605,6 +684,8 @@ export function handleTileClick(
     mergeAnimation,
     comboPopupText,
     screenShake: screenShake || undefined,
+    foamSpreadAnimation,
+    foamSpreadOccurred,
     blastedCount: blastSet.size,
     clearedObjectives,
     scoreGained,
@@ -844,6 +925,8 @@ export function applyHammerTool(
       clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
     } else if (target.obstacle === 'safe') {
       clearedObjectives['safe'] = (clearedObjectives['safe'] || 0) + 1;
+    } else if (target.obstacle === 'foam') {
+      clearedObjectives['foam'] = (clearedObjectives['foam'] || 0) + 1;
     }
   } else if (target.kind === 'color' && target.color) {
     clearedObjectives[target.color] = (clearedObjectives[target.color] || 0) + 1;

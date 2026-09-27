@@ -2,7 +2,7 @@ export type TileColor = 'red' | 'yellow' | 'blue' | 'green' | 'cyan';
 
 export type BoosterType = 'firecracker_h' | 'firecracker_v' | 'bomb' | 'disco';
 
-export type ObstacleType = 'armchair' | 'crate' | 'drop_item' | 'wardrobe' | 'safe';
+export type ObstacleType = 'armchair' | 'crate' | 'drop_item' | 'wardrobe' | 'safe' | 'foam';
 
 export type TileKind = 'color' | 'booster' | 'obstacle' | 'empty';
 
@@ -27,7 +27,7 @@ export interface Tile {
   highlightBooster?: BoosterType | null;
 }
 
-export type ObjectiveType = TileColor | 'armchair' | 'crate' | 'drop_item' | 'ice' | 'wardrobe' | 'safe';
+export type ObjectiveType = TileColor | 'armchair' | 'crate' | 'drop_item' | 'ice' | 'wardrobe' | 'safe' | 'foam';
 
 export interface Objective {
   type: ObjectiveType;
@@ -102,4 +102,12 @@ export interface ScorePopup {
   x: number;
   y: number;
   color: string;
+}
+
+export interface FoamSpreadAnimation {
+  id: string;
+  fromRow: number;
+  fromCol: number;
+  toRow: number;
+  toCol: number;
 }

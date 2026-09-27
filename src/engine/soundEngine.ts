@@ -298,6 +298,32 @@ class SoundEngine {
     osc.start();
     osc.stop(this.ctx.currentTime + 0.52);
   }
+
+  public playFoamSpread() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    // Squishy, bubbly foam expansion sound
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(560, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(240, now + 0.18);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.21);
+  }
 }
 
 export const sound = new SoundEngine();

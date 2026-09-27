@@ -144,3 +144,25 @@
 .animate-score-float {
   animation: scoreFloat 0.75s ease-out forwards;
 }
+
+/* Foam Expansion / Spreading Puff */
+@keyframes foamExpand {
+  0% { transform: scale(0.3); opacity: 0.3; }
+  50% { transform: scale(1.18); opacity: 0.9; }
+  75% { transform: scale(0.95); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-foam-expand {
+  animation: foamExpand 0.36s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Soapy Bubble Glimmer */
+@keyframes bubbleGlimmer {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.8; }
+  50% { transform: translateY(-2px) scale(1.08); opacity: 1; }
+}
+
+.animate-bubble-glimmer {
+  animation: bubbleGlimmer 1.6s ease-in-out infinite;
+}

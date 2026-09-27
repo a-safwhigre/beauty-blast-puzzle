@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LevelConfig, Tile, GameStatus, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup } from './types/game';
+import { LevelConfig, Tile, GameStatus, ActiveTool, RocketBeam, Shockwave, BoosterMergeAnimation, ScorePopup, FoamSpreadAnimation } from './types/game';
 import { HANDCRAFTED_LEVELS, generateProceduralLevel } from './levels/levelData';
 import {
   initializeBoard,
@@ -63,6 +63,7 @@ export function App() {
   const [isScreenShaking, setIsScreenShaking] = useState<boolean>(false);
   const [activeMerge, setActiveMerge] = useState<BoosterMergeAnimation | null>(null);
   const [scorePopups, setScorePopups] = useState<ScorePopup[]>([]);
+  const [foamSpreadAnimation, setFoamSpreadAnimation] = useState<FoamSpreadAnimation | null>(null);
 
   // Modals
   const [showLevelSelect, setShowLevelSelect] = useState<boolean>(false);
@@ -115,6 +116,7 @@ export function App() {
     setIsScreenShaking(false);
     setActiveMerge(null);
     setScorePopups([]);
+    setFoamSpreadAnimation(null);
   }, []);
 
   const onTileClick = (row: number, col: number) => {
@@ -167,6 +169,21 @@ export function App() {
           return {
             ...obj,
             current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['safe'] || 0), obj.target - remainingSafes)),
+          };
+        }
+        if (obj.type === 'foam') {
+          let remainingFoam = 0;
+          for (let r = 0; r < newGrid.length; r++) {
+            for (let c = 0; c < newGrid[r].length; c++) {
+              const tile = newGrid[r][c];
+              if (tile.kind === 'obstacle' && tile.obstacle === 'foam') {
+                remainingFoam++;
+              }
+            }
+          }
+          return {
+            ...obj,
+            current: Math.min(obj.target, Math.max(obj.current + (clearedObjs['foam'] || 0), obj.target - remainingFoam)),
           };
         }
         return {
@@ -260,6 +277,26 @@ export function App() {
       }, 780);
     }
 
+    // Spreading Hazard Feedback: Foam expanded
+    if (result.foamSpreadOccurred && result.foamSpreadAnimation) {
+      sound.playFoamSpread();
+      setFoamSpreadAnimation(result.foamSpreadAnimation);
+      setTimeout(() => setFoamSpreadAnimation(null), 380);
+
+      const spreadPopupId = `popup-foam-${Date.now()}`;
+      const cols = grid[0]?.length || 6;
+      const rows = grid.length;
+      const popupX = ((result.foamSpreadAnimation.toCol + 0.5) / cols) * 100;
+      const popupY = ((result.foamSpreadAnimation.toRow + 0.5) / rows) * 100;
+      setScorePopups(prev => [
+        ...prev,
+        { id: spreadPopupId, text: '🫧 FOAM SPREAD! +1', x: popupX, y: popupY, color: '#F472B6' }
+      ]);
+      setTimeout(() => {
+        setScorePopups(prev => prev.filter(p => p.id !== spreadPopupId));
+      }, 900);
+    }
+
     const executeBlastPhases = () => {
       // Phase 1 (0ms - 200ms): Blast, Beams, Shockwaves, Armchair Wobble
       const blastKeys = new Set(result.blastedPositions.map(p => `${p.row},${p.col}`));
@@ -325,9 +362,9 @@ export function App() {
       // Phase 3 (450ms - 550ms): Flying Item Arrival & Goal Capsule Bump
       setTimeout(() => {
         setFlyingCollectibles([]);
-        if (flyingItems.length > 0) {
+        if (flyingItems.length > 0 || result.foamSpreadOccurred) {
           setIsGoalBumping(true);
-          sound.playCollect();
+          if (flyingItems.length > 0) sound.playCollect();
           setTimeout(() => setIsGoalBumping(false), 240);
         }
 
@@ -395,6 +432,26 @@ export function App() {
             return {
               ...obj,
               current: Math.min(obj.target, Math.max(obj.current + cleared, obj.target - remainingSafes)),
+            };
+          }
+
+          if (obj.type === 'foam') {
+            let remainingFoam = 0;
+            for (let r = 0; r < result.newGrid.length; r++) {
+              for (let c = 0; c < result.newGrid[r].length; c++) {
+                const tile = result.newGrid[r][c];
+                if (tile.kind === 'obstacle' && tile.obstacle === 'foam') {
+                  remainingFoam++;
+                }
+              }
+            }
+            // If foam spread occurred on this turn, increment target by 1!
+            const newTarget = result.foamSpreadOccurred ? obj.target + 1 : obj.target;
+            const cleared = result.clearedObjectives['foam'] || 0;
+            return {
+              ...obj,
+              target: newTarget,
+              current: Math.min(newTarget, Math.max(obj.current + cleared, newTarget - remainingFoam)),
             };
           }
 
@@ -558,6 +615,7 @@ export function App() {
         isScreenShaking={isScreenShaking}
         activeMerge={activeMerge}
         scorePopups={scorePopups}
+        foamSpreadAnimation={foamSpreadAnimation}
       />
 
       {/* Floating Collectibles flying to TopBar Goal Capsule */}
