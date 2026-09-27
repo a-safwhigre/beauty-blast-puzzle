@@ -1,8 +1,8 @@
-export type TileColor = 'pink' | 'blue' | 'yellow' | 'green' | 'purple';
+export type TileColor = 'red' | 'yellow' | 'blue' | 'green' | 'cyan';
 
-export type BoosterType = 'rocket_h' | 'rocket_v' | 'bomb' | 'disco';
+export type BoosterType = 'firecracker_h' | 'firecracker_v' | 'bomb' | 'disco';
 
-export type ObstacleType = 'crate' | 'drop_item';
+export type ObstacleType = 'armchair' | 'crate' | 'drop_item';
 
 export type TileKind = 'color' | 'booster' | 'obstacle' | 'empty';
 
@@ -14,14 +14,14 @@ export interface Tile {
   color?: TileColor;
   booster?: BoosterType;
   obstacle?: ObstacleType;
-  hitPoints?: number; // For crates (e.g. 1 or 2 hits)
-  iceCover?: boolean; // Ice coating on top of cube
+  hitPoints?: number;
+  iceCover?: boolean;
   isFalling?: boolean;
   isBlasting?: boolean;
-  highlightBooster?: BoosterType | null; // Preview indicator if part of 5+, 7+, 9+ cluster
+  highlightBooster?: BoosterType | null;
 }
 
-export type ObjectiveType = TileColor | 'crate' | 'drop_item' | 'ice';
+export type ObjectiveType = TileColor | 'armchair' | 'crate' | 'drop_item' | 'ice';
 
 export interface Objective {
   type: ObjectiveType;
@@ -38,10 +38,12 @@ export interface LevelConfig {
   moves: number;
   colors: TileColor[];
   objectives: Objective[];
-  layout?: (string | null)[][]; // Custom starting layout (e.g. 'P'=pink, 'C'=crate, 'C2'=reinforced crate, 'D'=drop item, 'I:B'=ice on blue, '.'=empty)
+  layout?: (string | null)[][];
 }
 
 export type GameStatus = 'playing' | 'fever' | 'won' | 'lost' | 'paused';
+
+export type ActiveTool = 'hammer' | 'swap' | 'bomb' | 'firecracker' | null;
 
 export interface Position {
   row: number;

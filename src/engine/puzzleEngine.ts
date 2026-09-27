@@ -9,7 +9,6 @@ export interface BlastResult {
   spawnedBooster?: { row: number; col: number; type: BoosterType };
 }
 
-// Generate unique ID
 let idCounter = 0;
 export function createTileId(): string {
   return `tile-${++idCounter}-${Date.now().toString(36)}`;
@@ -39,11 +38,16 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
       if (layout && layout[r] && layout[r][c] !== undefined) {
         const code = layout[r][c];
         if (code === '.' || code === null) {
+          row.push(createRandomTile(r, c, colors));
+        } else if (code === 'A' || code === 'armchair') {
+          // Signature Pink Armchair Obstacle
           row.push({
             id: createTileId(),
             row: r,
             col: c,
-            kind: 'empty',
+            kind: 'obstacle',
+            obstacle: 'armchair',
+            hitPoints: 1,
           });
         } else if (code === 'C' || code === 'C1') {
           row.push({
@@ -71,21 +75,21 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
             kind: 'obstacle',
             obstacle: 'drop_item',
           });
-        } else if (code === 'RH') {
+        } else if (code === 'FH' || code === 'RH') {
           row.push({
             id: createTileId(),
             row: r,
             col: c,
             kind: 'booster',
-            booster: 'rocket_h',
+            booster: 'firecracker_h',
           });
-        } else if (code === 'RV') {
+        } else if (code === 'FV' || code === 'RV') {
           row.push({
             id: createTileId(),
             row: r,
             col: c,
             kind: 'booster',
-            booster: 'rocket_v',
+            booster: 'firecracker_v',
           });
         } else if (code === 'B') {
           row.push({
@@ -104,7 +108,6 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
             booster: 'disco',
           });
         } else if (code.startsWith('I:')) {
-          // Ice covering color e.g. "I:pink"
           const colCode = code.split(':')[1] as TileColor;
           row.push({
             id: createTileId(),
@@ -115,7 +118,6 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
             iceCover: true,
           });
         } else {
-          // Specific or random color
           const color = colors.includes(code as TileColor) ? (code as TileColor) : colors[Math.floor(Math.random() * colors.length)];
           row.push({
             id: createTileId(),
@@ -132,7 +134,6 @@ export function initializeBoard(level: LevelConfig): Tile[][] {
     grid.push(row);
   }
 
-  // Ensure initial board has at least some valid matches
   return updateBoosterHighlights(grid);
 }
 
@@ -188,7 +189,7 @@ export function findConnectedCluster(grid: Tile[][], startRow: number, startCol:
   return cluster;
 }
 
-// Update highlight badges on tiles indicating booster threshold (5+ rocket, 7+ bomb, 9+ disco)
+// Update highlight badges on tiles indicating booster threshold (5+ firecracker, 7+ bomb, 9+ disco)
 export function updateBoosterHighlights(grid: Tile[][]): Tile[][] {
   const rows = grid.length;
   const cols = grid[0].length;
@@ -203,13 +204,13 @@ export function updateBoosterHighlights(grid: Tile[][]): Tile[][] {
         cluster.forEach(p => visited.add(`${p.row},${p.col}`));
 
         if (cluster.length >= 5) {
-          let boosterType: BoosterType = 'rocket_h';
+          let boosterType: BoosterType = 'firecracker_h';
           if (cluster.length >= 9) {
             boosterType = 'disco';
           } else if (cluster.length >= 7) {
             boosterType = 'bomb';
           } else {
-            boosterType = Math.random() > 0.5 ? 'rocket_h' : 'rocket_v';
+            boosterType = Math.random() > 0.5 ? 'firecracker_h' : 'firecracker_v';
           }
 
           cluster.forEach(p => {
@@ -283,7 +284,6 @@ export function handleTileClick(
   else if (clicked.kind === 'color' && !clicked.iceCover) {
     const cluster = findConnectedCluster(grid, row, col);
     if (cluster.length < 2) {
-      // Cannot blast single cube
       return null;
     }
 
@@ -297,7 +297,7 @@ export function handleTileClick(
       spawnedBooster = { row, col, type: 'bomb' };
       sound.playBomb();
     } else if (cluster.length >= 5) {
-      const type: BoosterType = Math.random() > 0.5 ? 'rocket_h' : 'rocket_v';
+      const type: BoosterType = Math.random() > 0.5 ? 'firecracker_h' : 'firecracker_v';
       spawnedBooster = { row, col, type };
       sound.playRocket();
     } else {
@@ -311,7 +311,7 @@ export function handleTileClick(
   const newGrid: Tile[][] = grid.map(r => r.map(c => ({ ...c })));
   const blastSet = new Set(tilesToBlast.map(p => `${p.row},${p.col}`));
 
-  // 1. Check adjacent obstacles to blast (crates and ice)
+  // Check adjacent obstacles to blast (Armchairs, Crates, Ice)
   const directions = [
     { r: -1, c: 0 },
     { r: 1, c: 0 },
@@ -322,19 +322,17 @@ export function handleTileClick(
   const damagedObstacles = new Set<string>();
 
   tilesToBlast.forEach(p => {
-    // Collect color stats
     const t = newGrid[p.row][p.col];
     if (t.kind === 'color' && t.color) {
       clearedObjectives[t.color] = (clearedObjectives[t.color] || 0) + 1;
     }
 
-    // Direct hit on ice
     if (t.iceCover) {
       clearedObjectives['ice'] = (clearedObjectives['ice'] || 0) + 1;
       t.iceCover = false;
     }
 
-    // Check adjacent crates for damage
+    // Check adjacent armchairs and crates
     directions.forEach(d => {
       const nr = p.row + d.r;
       const nc = p.col + d.c;
@@ -342,13 +340,21 @@ export function handleTileClick(
         const key = `${nr},${nc}`;
         if (!damagedObstacles.has(key) && !blastSet.has(key)) {
           const adjTile = newGrid[nr][nc];
-          if (adjTile.kind === 'obstacle' && adjTile.obstacle === 'crate') {
-            damagedObstacles.add(key);
-            adjTile.hitPoints = (adjTile.hitPoints || 1) - 1;
-            sound.playCrateHit();
-            if (adjTile.hitPoints <= 0) {
+          if (adjTile.kind === 'obstacle') {
+            if (adjTile.obstacle === 'armchair') {
+              // Armchair eliminated!
+              damagedObstacles.add(key);
               blastSet.add(key);
-              clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+              clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
+              sound.playCrateHit();
+            } else if (adjTile.obstacle === 'crate') {
+              damagedObstacles.add(key);
+              adjTile.hitPoints = (adjTile.hitPoints || 1) - 1;
+              sound.playCrateHit();
+              if (adjTile.hitPoints <= 0) {
+                blastSet.add(key);
+                clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+              }
             }
           } else if (adjTile.iceCover) {
             damagedObstacles.add(key);
@@ -360,11 +366,10 @@ export function handleTileClick(
     });
   });
 
-  // 2. Mark blasted tiles as empty (nullify content)
+  // Mark blasted tiles as empty
   blastSet.forEach(key => {
     const [r, c] = key.split(',').map(Number);
     if (spawnedBooster && r === spawnedBooster.row && c === spawnedBooster.col) {
-      // Spawn booster in place
       newGrid[r][c] = {
         id: createTileId(),
         row: r,
@@ -382,13 +387,13 @@ export function handleTileClick(
     }
   });
 
-  // 3. Apply Gravity and Refill Columns
+  // Apply Gravity and Refill Columns
   applyGravityAndRefill(newGrid, allowedColors, clearedObjectives);
 
-  // 4. Update booster indicators
+  // Update booster indicators
   const finalGrid = updateBoosterHighlights(newGrid);
 
-  const scoreGained = blastSet.size * 50 + (spawnedBooster ? 200 : 0);
+  const scoreGained = blastSet.size * 60 + (spawnedBooster ? 250 : 0);
 
   return {
     newGrid: finalGrid,
@@ -405,12 +410,12 @@ function executeSingleBooster(grid: Tile[][], type: BoosterType, row: number, co
   const cols = grid[0].length;
   const results: Position[] = [];
 
-  if (type === 'rocket_h') {
+  if (type === 'firecracker_h') {
     sound.playRocket();
     for (let c = 0; c < cols; c++) {
       if (grid[row][c].kind !== 'empty') results.push({ row, col: c });
     }
-  } else if (type === 'rocket_v') {
+  } else if (type === 'firecracker_v') {
     sound.playRocket();
     for (let r = 0; r < rows; r++) {
       if (grid[r][col].kind !== 'empty') results.push({ row: r, col });
@@ -424,7 +429,6 @@ function executeSingleBooster(grid: Tile[][], type: BoosterType, row: number, co
     }
   } else if (type === 'disco') {
     sound.playDisco();
-    // Find most abundant color on the board
     const colorCounts: { [key: string]: number } = {};
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -434,7 +438,7 @@ function executeSingleBooster(grid: Tile[][], type: BoosterType, row: number, co
         }
       }
     }
-    const targetColor = Object.keys(colorCounts).sort((a, b) => colorCounts[b] - colorCounts[a])[0] || 'pink';
+    const targetColor = Object.keys(colorCounts).sort((a, b) => colorCounts[b] - colorCounts[a])[0] || 'red';
     results.push({ row, col });
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -448,7 +452,7 @@ function executeSingleBooster(grid: Tile[][], type: BoosterType, row: number, co
   return results;
 }
 
-// Booster Combos!
+// Booster Combos
 function executeBoosterCombo(
   grid: Tile[][],
   b1: BoosterType,
@@ -463,7 +467,6 @@ function executeBoosterCombo(
 
   const comboKey = [b1, b2].sort().join('+');
 
-  // Combo 1: Disco + Disco = Board Wipe!
   if (b1 === 'disco' && b2 === 'disco') {
     sound.playVictory();
     for (let r = 0; r < rows; r++) {
@@ -474,11 +477,9 @@ function executeBoosterCombo(
     return results;
   }
 
-  // Combo 2: Disco + Rocket / Disco + Bomb = Convert all color tiles to boosters!
   if (b1 === 'disco' || b2 === 'disco') {
     sound.playDisco();
     const otherType = b1 === 'disco' ? b2 : b1;
-    // Find most abundant color
     const colorCounts: { [key: string]: number } = {};
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -494,7 +495,6 @@ function executeBoosterCombo(
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (grid[r][c].kind === 'color' && grid[r][c].color === targetColor) {
-          // Detonate as that booster
           results.push(...executeSingleBooster(grid, otherType, r, c));
         }
       }
@@ -502,7 +502,6 @@ function executeBoosterCombo(
     return results;
   }
 
-  // Combo 3: Bomb + Bomb = Mega 5x5 explosion
   if (b1 === 'bomb' && b2 === 'bomb') {
     sound.playBomb();
     for (let r = Math.max(0, r1 - 2); r <= Math.min(rows - 1, r1 + 2); r++) {
@@ -513,8 +512,7 @@ function executeBoosterCombo(
     return results;
   }
 
-  // Combo 4: Rocket + Bomb = 3 Rows + 3 Columns
-  if (comboKey.includes('bomb') && comboKey.includes('rocket')) {
+  if (comboKey.includes('bomb') && (comboKey.includes('firecracker') || comboKey.includes('rocket'))) {
     sound.playBomb();
     sound.playRocket();
     for (let r = Math.max(0, r1 - 1); r <= Math.min(rows - 1, r1 + 1); r++) {
@@ -530,8 +528,7 @@ function executeBoosterCombo(
     return results;
   }
 
-  // Combo 5: Rocket + Rocket = Row + Column Cross
-  if (comboKey.includes('rocket')) {
+  if (comboKey.includes('firecracker') || comboKey.includes('rocket')) {
     sound.playRocket();
     for (let c = 0; c < cols; c++) {
       if (grid[r1][c].kind !== 'empty') results.push({ row: r1, col: c });
@@ -545,7 +542,7 @@ function executeBoosterCombo(
   return results;
 }
 
-// Gravity fall and refill from the top
+// Gravity fall and refill
 export function applyGravityAndRefill(
   grid: Tile[][],
   allowedColors: TileColor[],
@@ -554,9 +551,7 @@ export function applyGravityAndRefill(
   const rows = grid.length;
   const cols = grid[0].length;
 
-  // Process column by column
   for (let c = 0; c < cols; c++) {
-    // 1. Shift existing tiles down
     let writeRow = rows - 1;
     for (let r = rows - 1; r >= 0; r--) {
       const tile = grid[r][c];
@@ -574,7 +569,6 @@ export function applyGravityAndRefill(
       }
     }
 
-    // 2. Fill empty top slots with fresh tiles
     while (writeRow >= 0) {
       grid[writeRow][c] = {
         ...createRandomTile(writeRow, c, allowedColors),
@@ -583,11 +577,9 @@ export function applyGravityAndRefill(
       writeRow--;
     }
 
-    // 3. Check if any drop_item reached the bottom row
     for (let r = rows - 1; r >= 0; r--) {
       const tile = grid[r][c];
       if (tile.kind === 'obstacle' && tile.obstacle === 'drop_item') {
-        // If it's on the bottom row, or all cells below it are non-empty obstacles
         if (r === rows - 1) {
           clearedObjectives['drop_item'] = (clearedObjectives['drop_item'] || 0) + 1;
           sound.playCollect();
@@ -597,7 +589,6 @@ export function applyGravityAndRefill(
             col: c,
             kind: 'empty',
           };
-          // Re-drop this column
           for (let above = r - 1; above >= 0; above--) {
             grid[above + 1][c] = { ...grid[above][c], row: above + 1 };
           }
@@ -608,7 +599,54 @@ export function applyGravityAndRefill(
   }
 }
 
-// Check if player has any valid moves
+// In-game power-up: Hammer tool (destroys any tile/obstacle directly)
+export function applyHammerTool(
+  grid: Tile[][],
+  row: number,
+  col: number,
+  allowedColors: TileColor[],
+  clearedObjectives: { [key: string]: number }
+): Tile[][] {
+  const newGrid = grid.map(r => r.map(c => ({ ...c })));
+  const target = newGrid[row][col];
+  if (!target || target.kind === 'empty') return grid;
+
+  sound.playBomb();
+  if (target.kind === 'obstacle') {
+    if (target.obstacle === 'armchair') {
+      clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
+    } else if (target.obstacle === 'crate') {
+      clearedObjectives['crate'] = (clearedObjectives['crate'] || 0) + 1;
+    }
+  } else if (target.kind === 'color' && target.color) {
+    clearedObjectives[target.color] = (clearedObjectives[target.color] || 0) + 1;
+  }
+
+  newGrid[row][col] = {
+    id: createTileId(),
+    row,
+    col,
+    kind: 'empty',
+  };
+
+  applyGravityAndRefill(newGrid, allowedColors, clearedObjectives);
+  return updateBoosterHighlights(newGrid);
+}
+
+// In-game power-up: Swap tool (swaps two tiles directly)
+export function applySwapTool(grid: Tile[][], r1: number, c1: number, r2: number, c2: number): Tile[][] {
+  const newGrid = grid.map(r => r.map(c => ({ ...c })));
+  const t1 = newGrid[r1][c1];
+  const t2 = newGrid[r2][c2];
+
+  newGrid[r1][c1] = { ...t2, row: r1, col: c1 };
+  newGrid[r2][c2] = { ...t1, row: r2, col: c2 };
+
+  sound.playPop(1);
+  return updateBoosterHighlights(newGrid);
+}
+
+// Check valid moves
 export function checkHasValidMoves(grid: Tile[][]): boolean {
   const rows = grid.length;
   const cols = grid[0].length;
@@ -626,7 +664,7 @@ export function checkHasValidMoves(grid: Tile[][]): boolean {
   return false;
 }
 
-// Auto-shuffle board when no moves exist
+// Shuffle board
 export function shuffleBoard(grid: Tile[][], allowedColors: TileColor[]): Tile[][] {
   const colors: TileColor[] = [];
   const coords: Position[] = [];
@@ -640,7 +678,6 @@ export function shuffleBoard(grid: Tile[][], allowedColors: TileColor[]): Tile[]
     });
   });
 
-  // Fisher-Yates shuffle
   for (let i = colors.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [colors[i], colors[j]] = [colors[j], colors[i]];
@@ -654,7 +691,7 @@ export function shuffleBoard(grid: Tile[][], allowedColors: TileColor[]): Tile[]
   return updateBoosterHighlights(newGrid);
 }
 
-// Check objective completion
+// Check objectives
 export function checkObjectivesMet(objectives: Objective[]): boolean {
   return objectives.every(obj => obj.current >= obj.target);
 }

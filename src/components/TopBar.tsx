@@ -1,12 +1,10 @@
 import React from 'react';
 import { Objective, ObjectiveType } from '../types/game';
-import { Volume2, VolumeX, RotateCcw, ListFilter, HelpCircle, Star } from 'lucide-react';
+import { Volume2, VolumeX, RotateCcw, ListFilter, HelpCircle } from 'lucide-react';
 
 interface TopBarProps {
   levelName: string;
   movesLeft: number;
-  score: number;
-  stars: number;
   objectives: Objective[];
   isMuted: boolean;
   onToggleMute: () => void;
@@ -18,8 +16,6 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   levelName,
   movesLeft,
-  score,
-  stars,
   objectives,
   isMuted,
   onToggleMute,
@@ -29,114 +25,122 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const getObjectiveVisual = (type: ObjectiveType) => {
     switch (type) {
-      case 'pink':
-        return <div className="w-5 h-5 rounded-md bg-[#FF4D8D] shadow-sm border border-white/40 flex items-center justify-center text-[10px]">💄</div>;
-      case 'blue':
-        return <div className="w-5 h-5 rounded-md bg-[#38BDF8] shadow-sm border border-white/40 flex items-center justify-center text-[10px]">💎</div>;
+      case 'armchair':
+        return (
+          <div className="w-8 h-8 flex items-center justify-center text-xl filter drop-shadow">
+            🛋️
+          </div>
+        );
+      case 'red':
+        return <div className="w-6 h-6 rounded-lg bg-[#E11D48] flex items-center justify-center text-xs shadow-sm">❤️</div>;
       case 'yellow':
-        return <div className="w-5 h-5 rounded-md bg-[#FBBF24] shadow-sm border border-white/40 flex items-center justify-center text-[10px]">⭐</div>;
+        return <div className="w-6 h-6 rounded-lg bg-[#F59E0B] flex items-center justify-center text-xs shadow-sm">⭐</div>;
+      case 'blue':
+        return <div className="w-6 h-6 rounded-lg bg-[#0284C7] flex items-center justify-center text-xs shadow-sm">👗</div>;
       case 'green':
-        return <div className="w-5 h-5 rounded-md bg-[#34D399] shadow-sm border border-white/40 flex items-center justify-center text-[10px]">🍀</div>;
-      case 'purple':
-        return <div className="w-5 h-5 rounded-md bg-[#A855F7] shadow-sm border border-white/40 flex items-center justify-center text-[10px]">🔮</div>;
+        return <div className="w-6 h-6 rounded-lg bg-[#059669] flex items-center justify-center text-xs shadow-sm">🎀</div>;
+      case 'cyan':
+        return <div className="w-6 h-6 rounded-lg bg-[#06B6D4] flex items-center justify-center text-xs shadow-sm">✨</div>;
       case 'crate':
-        return <div className="w-5 h-5 rounded-md bg-amber-700 border border-amber-900 shadow-sm flex items-center justify-center text-[10px]">📦</div>;
+        return <div className="w-7 h-7 flex items-center justify-center text-base">📦</div>;
       case 'drop_item':
-        return <div className="w-5 h-5 rounded-md bg-rose-500 border border-rose-700 shadow-sm flex items-center justify-center text-[10px]">💋</div>;
+        return <div className="w-7 h-7 flex items-center justify-center text-base">💄</div>;
       case 'ice':
-        return <div className="w-5 h-5 rounded-md bg-cyan-200 border border-cyan-400 shadow-sm flex items-center justify-center text-[10px]">❄️</div>;
+        return <div className="w-7 h-7 flex items-center justify-center text-base">❄️</div>;
       default:
         return null;
     }
   };
 
-  const isLowMoves = movesLeft <= 5;
-
   return (
-    <header className="w-full max-w-xl mx-auto px-3 pt-2 pb-1 flex flex-col gap-2 select-none">
-      {/* Top action row */}
-      <div className="flex items-center justify-between">
+    <header className="w-full max-w-lg mx-auto px-3 pt-3 flex flex-col gap-1.5 select-none z-20">
+      {/* Top micro toolbar */}
+      <div className="flex items-center justify-between px-1">
         <button
           onClick={onOpenLevelSelect}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-all active:scale-95 shadow-md"
+          className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md border border-white/20 text-xs font-black text-white shadow-md active:scale-95 transition-all"
         >
-          <ListFilter size={15} className="text-pink-400" />
-          <span className="truncate max-w-[120px] sm:max-w-[180px]">{levelName}</span>
+          <ListFilter size={13} className="text-pink-300" />
+          <span className="truncate max-w-[140px] sm:max-w-[200px]">{levelName}</span>
         </button>
 
-        {/* Stars & Score */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 shadow-md">
-          <div className="flex items-center gap-0.5">
-            {[1, 2, 3].map(s => (
-              <Star
-                key={s}
-                size={14}
-                className={s <= stars ? 'fill-amber-400 text-amber-400 drop-shadow' : 'text-slate-600'}
-              />
-            ))}
-          </div>
-          <span className="text-xs font-bold text-amber-300 font-mono tracking-wide">{score}</span>
-        </div>
-
-        {/* Control buttons */}
         <div className="flex items-center gap-1">
           <button
             onClick={onOpenHowToPlay}
             title="How to play"
-            className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-all active:scale-90"
+            className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md border border-white/20 text-white/90 flex items-center justify-center active:scale-90 transition-all shadow"
           >
-            <HelpCircle size={17} />
+            <HelpCircle size={14} />
           </button>
           <button
             onClick={onToggleMute}
             title={isMuted ? 'Unmute' : 'Mute'}
-            className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-all active:scale-90"
+            className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md border border-white/20 text-white/90 flex items-center justify-center active:scale-90 transition-all shadow"
           >
-            {isMuted ? <VolumeX size={17} className="text-rose-400" /> : <Volume2 size={17} className="text-emerald-400" />}
+            {isMuted ? <VolumeX size={14} className="text-rose-400" /> : <Volume2 size={14} className="text-emerald-400" />}
           </button>
           <button
             onClick={onRestart}
-            title="Restart level"
-            className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-all active:scale-90"
+            title="Restart"
+            className="w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md border border-white/20 text-white/90 flex items-center justify-center active:scale-90 transition-all shadow"
           >
-            <RotateCcw size={17} />
+            <RotateCcw size={14} />
           </button>
         </div>
       </div>
 
-      {/* Main HUD: Moves & Objectives */}
-      <div className="flex items-center justify-between gap-2 bg-slate-800/90 backdrop-blur-md rounded-2xl p-2.5 border-2 border-slate-700/60 shadow-xl">
-        {/* Moves Left Badge */}
-        <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl min-w-[76px] transition-all shadow-inner border ${
-          isLowMoves
-            ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 animate-pulse'
-            : 'bg-gradient-to-b from-pink-500 to-rose-600 border-pink-400/40 text-white'
-        }`}>
-          <span className="text-[10px] uppercase font-bold tracking-wider opacity-90">Moves</span>
-          <span className="text-2xl font-black font-['Outfit'] leading-none drop-shadow-md">{movesLeft}</span>
+      {/* Iconic Beauty Blast HUD (Pug Mascot + Goal Pill + Moves Pill) */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        {/* Left: Cute Pug Companion Avatar */}
+        <div className="relative group cursor-pointer" onClick={onOpenLevelSelect}>
+          <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-full bg-white border-3 border-sky-400 shadow-xl overflow-hidden flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <span className="text-4xl sm:text-5xl filter drop-shadow select-none transform transition-transform group-hover:rotate-6">
+              🐶
+            </span>
+          </div>
+          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-pink-500 text-white text-[9px] font-black uppercase tracking-wider border border-white shadow">
+            Fiona
+          </span>
         </div>
 
-        {/* Target Objectives Checklist */}
-        <div className="flex-1 flex items-center justify-end gap-2 overflow-x-auto py-0.5 no-scrollbar">
-          {objectives.map((obj, i) => {
-            const isCompleted = obj.current >= obj.target;
-            const remaining = Math.max(0, obj.target - obj.current);
-            return (
-              <div
-                key={i}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition-all border ${
-                  isCompleted
-                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                    : 'bg-slate-900/60 border-slate-700/60 text-slate-200'
-                }`}
-              >
-                {getObjectiveVisual(obj.type)}
-                <span className="text-sm font-black font-['Outfit'] min-w-[16px] text-center">
-                  {isCompleted ? '✓' : remaining}
-                </span>
-              </div>
-            );
-          })}
+        {/* Center: Glossy Goal Capsule (目标) */}
+        <div className="flex-1 bg-white/95 rounded-3xl p-1 px-3 shadow-xl border-2 border-white flex flex-col items-center justify-center relative min-w-[130px]">
+          <span className="text-[10px] uppercase font-black tracking-widest text-amber-500 -mt-0.5">
+            GOAL • 目标
+          </span>
+          <div className="flex items-center gap-2 justify-center py-0.5">
+            {objectives.map((obj, i) => {
+              const isDone = obj.current >= obj.target;
+              const remaining = Math.max(0, obj.target - obj.current);
+              return (
+                <div key={i} className="flex items-center gap-1.5">
+                  {getObjectiveVisual(obj.type)}
+                  <span className={`text-xl sm:text-2xl font-black font-['Outfit'] leading-none ${
+                    isDone ? 'text-emerald-500' : 'text-slate-800'
+                  }`}>
+                    {isDone ? '✓' : remaining}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: Glossy Moves Capsule (步数) */}
+        <div className={`bg-white/95 rounded-3xl p-1 px-4 shadow-xl border-2 flex flex-col items-center justify-center min-w-[95px] transition-all ${
+          movesLeft <= 5 ? 'border-rose-400 animate-pulse' : 'border-white'
+        }`}>
+          <span className="text-[10px] uppercase font-black tracking-widest text-amber-500 -mt-0.5">
+            MOVES • 步数
+          </span>
+          <div className="flex items-center gap-1.5 py-0.5">
+            <span className="text-sky-500 text-lg font-black font-mono">⇄</span>
+            <span className={`text-2xl sm:text-3xl font-black font-['Outfit'] leading-none ${
+              movesLeft <= 5 ? 'text-rose-600' : 'text-slate-900'
+            }`}>
+              {movesLeft}
+            </span>
+          </div>
         </div>
       </div>
     </header>
