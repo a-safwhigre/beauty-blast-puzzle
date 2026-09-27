@@ -3,10 +3,26 @@ import { sound } from './soundEngine';
 
 export interface BlastResult {
   newGrid: Tile[][];
+  blastedPositions: Position[];
+  damagedObstacles: Position[];
+  rocketBeams?: { orientation: 'h' | 'v'; index: number }[];
+  bombShockwaves?: Position[];
   blastedCount: number;
   clearedObjectives: { [key: string]: number };
   scoreGained: number;
   spawnedBooster?: { row: number; col: number; type: BoosterType };
+}
+
+export function checkTileCanPop(grid: Tile[][], row: number, col: number): boolean {
+  if (!grid || !grid[row] || !grid[row][col]) return false;
+  const tile = grid[row][col];
+  if (tile.kind === 'empty' || tile.kind === 'obstacle') return false;
+  if (tile.kind === 'booster') return true;
+  if (tile.kind === 'color' && !tile.iceCover) {
+    const cluster = findConnectedCluster(grid, row, col);
+    return cluster.length >= 2;
+  }
+  return false;
 }
 
 let idCounter = 0;
@@ -266,6 +282,8 @@ export function handleTileClick(
   let tilesToBlast: Position[] = [];
   let spawnedBooster: { row: number; col: number; type: BoosterType } | undefined = undefined;
   const clearedObjectives: { [key: string]: number } = {};
+  const rocketBeams: { orientation: 'h' | 'v'; index: number }[] = [];
+  const bombShockwaves: Position[] = [];
 
   // Case 1: Tapping a Booster
   if (clicked.kind === 'booster' && clicked.booster) {
@@ -275,9 +293,32 @@ export function handleTileClick(
       // Booster COMBO!
       const otherBooster = grid[adjacent.row][adjacent.col].booster!;
       tilesToBlast = executeBoosterCombo(grid, clicked.booster, otherBooster, row, col, adjacent);
+
+      const comboKey = [clicked.booster, otherBooster].sort().join('+');
+      if (comboKey.includes('bomb') && (comboKey.includes('firecracker') || comboKey.includes('rocket'))) {
+        for (let ro = Math.max(0, row - 1); ro <= Math.min(rows - 1, row + 1); ro++) {
+          rocketBeams.push({ orientation: 'h', index: ro });
+        }
+        for (let co = Math.max(0, col - 1); co <= Math.min(cols - 1, col + 1); co++) {
+          rocketBeams.push({ orientation: 'v', index: co });
+        }
+        bombShockwaves.push({ row, col });
+      } else if (comboKey.includes('bomb')) {
+        bombShockwaves.push({ row, col });
+      } else {
+        rocketBeams.push({ orientation: 'h', index: row });
+        rocketBeams.push({ orientation: 'v', index: col });
+      }
     } else {
       // Single Booster
       tilesToBlast = executeSingleBooster(grid, clicked.booster, row, col);
+      if (clicked.booster === 'firecracker_h') {
+        rocketBeams.push({ orientation: 'h', index: row });
+      } else if (clicked.booster === 'firecracker_v') {
+        rocketBeams.push({ orientation: 'v', index: col });
+      } else if (clicked.booster === 'bomb') {
+        bombShockwaves.push({ row, col });
+      }
     }
   }
   // Case 2: Tapping a Color Cluster
@@ -320,6 +361,7 @@ export function handleTileClick(
   ];
 
   const damagedObstacles = new Set<string>();
+  const damagedObstaclePositions: Position[] = [];
 
   tilesToBlast.forEach(p => {
     const t = newGrid[p.row][p.col];
@@ -344,11 +386,13 @@ export function handleTileClick(
             if (adjTile.obstacle === 'armchair') {
               // Armchair eliminated!
               damagedObstacles.add(key);
+              damagedObstaclePositions.push({ row: nr, col: nc });
               blastSet.add(key);
               clearedObjectives['armchair'] = (clearedObjectives['armchair'] || 0) + 1;
               sound.playCrateHit();
             } else if (adjTile.obstacle === 'crate') {
               damagedObstacles.add(key);
+              damagedObstaclePositions.push({ row: nr, col: nc });
               adjTile.hitPoints = (adjTile.hitPoints || 1) - 1;
               sound.playCrateHit();
               if (adjTile.hitPoints <= 0) {
@@ -358,6 +402,7 @@ export function handleTileClick(
             }
           } else if (adjTile.iceCover) {
             damagedObstacles.add(key);
+            damagedObstaclePositions.push({ row: nr, col: nc });
             adjTile.iceCover = false;
             clearedObjectives['ice'] = (clearedObjectives['ice'] || 0) + 1;
           }
@@ -397,6 +442,13 @@ export function handleTileClick(
 
   return {
     newGrid: finalGrid,
+    blastedPositions: Array.from(blastSet).map(k => {
+      const [r, c] = k.split(',').map(Number);
+      return { row: r, col: c };
+    }),
+    damagedObstacles: damagedObstaclePositions,
+    rocketBeams: rocketBeams.length > 0 ? rocketBeams : undefined,
+    bombShockwaves: bombShockwaves.length > 0 ? bombShockwaves : undefined,
     blastedCount: blastSet.size,
     clearedObjectives,
     scoreGained,
@@ -569,11 +621,14 @@ export function applyGravityAndRefill(
       }
     }
 
+    let spawnOffset = 1;
     while (writeRow >= 0) {
       grid[writeRow][c] = {
         ...createRandomTile(writeRow, c, allowedColors),
+        spawnRow: -spawnOffset,
         isFalling: true,
       };
+      spawnOffset++;
       writeRow--;
     }
 

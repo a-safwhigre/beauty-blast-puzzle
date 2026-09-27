@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Tile, TileColor, BoosterType, ActiveTool } from '../types/game';
+import React, { useState, useEffect, useRef } from 'react';
+import { Tile, TileColor, BoosterType, ActiveTool, RocketBeam, Shockwave } from '../types/game';
 
 interface GameBoardProps {
   grid: Tile[][];
@@ -8,6 +8,21 @@ interface GameBoardProps {
   activeTool: ActiveTool;
   onSelectTool: (tool: ActiveTool) => void;
   onOpenSettings: () => void;
+  blastingCoords?: Set<string>;
+  wigglingCoord?: string | null;
+  damagedObstacleCoords?: Set<string>;
+  rocketBeams?: RocketBeam[];
+  bombShockwaves?: Shockwave[];
+}
+
+interface Particle {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  size: number;
+  vx: number;
+  vy: number;
 }
 
 export const GameBoard: React.FC<GameBoardProps> = ({
@@ -17,10 +32,99 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   activeTool,
   onSelectTool,
   onOpenSettings,
+  blastingCoords = new Set(),
+  wigglingCoord = null,
+  damagedObstacleCoords = new Set(),
+  rocketBeams = [],
+  bombShockwaves = [],
 }) => {
   const rows = grid.length;
   const cols = grid[0]?.length || 6;
   const [selectedSwapTile, setSelectedSwapTile] = useState<{ row: number; col: number } | null>(null);
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [animatedSpawnOffsets, setAnimatedSpawnOffsets] = useState<{ [id: string]: number }>({});
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Manage spawn animations for newly falling tiles
+  useEffect(() => {
+    const pendingOffsets: { [id: string]: number } = {};
+    let hasPending = false;
+
+    grid.forEach(row => {
+      row.forEach(tile => {
+        if (tile.kind !== 'empty' && tile.spawnRow !== undefined) {
+          if (animatedSpawnOffsets[tile.id] === undefined) {
+            pendingOffsets[tile.id] = tile.spawnRow;
+            hasPending = true;
+          }
+        }
+      });
+    });
+
+    if (hasPending) {
+      setAnimatedSpawnOffsets(prev => ({ ...prev, ...pendingOffsets }));
+      const timer = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setAnimatedSpawnOffsets(prev => {
+            const next = { ...prev };
+            Object.keys(pendingOffsets).forEach(id => {
+              delete next[id];
+            });
+            return next;
+          });
+        });
+      });
+      return () => cancelAnimationFrame(timer);
+    }
+  }, [grid]);
+
+  // Generate particle bursts whenever blastingCoords triggers
+  useEffect(() => {
+    if (blastingCoords.size === 0) return;
+
+    const newParticles: Particle[] = [];
+    blastingCoords.forEach(key => {
+      const [r, c] = key.split(',').map(Number);
+      const tile = grid[r]?.[c];
+      let pColor = '#F59E0B';
+      if (tile?.kind === 'color') {
+        switch (tile.color) {
+          case 'red': pColor = '#FF4365'; break;
+          case 'yellow': pColor = '#FBBF24'; break;
+          case 'blue': pColor = '#38BDF8'; break;
+          case 'green': pColor = '#4ADE80'; break;
+          case 'cyan': pColor = '#67E8F9'; break;
+        }
+      } else if (tile?.kind === 'obstacle' && tile.obstacle === 'armchair') {
+        pColor = '#F472B6';
+      }
+
+      const centerX = ((c + 0.5) / cols) * 100;
+      const centerY = ((r + 0.5) / rows) * 100;
+
+      // 8 particles radiating in a circle
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4 + (Math.random() * 0.3 - 0.15);
+        const speed = 25 + Math.random() * 30;
+        newParticles.push({
+          id: `p-${Date.now()}-${r}-${c}-${i}`,
+          x: centerX,
+          y: centerY,
+          color: pColor,
+          size: 6 + Math.random() * 5,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+        });
+      }
+    });
+
+    setParticles(prev => [...prev, ...newParticles]);
+    const timer = setTimeout(() => {
+      setParticles(prev => prev.filter(p => !newParticles.some(np => np.id === p.id)));
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [blastingCoords, grid, cols, rows]);
 
   const handleTileClickInternal = (r: number, c: number) => {
     if (disabled) return;
@@ -29,7 +133,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       if (!selectedSwapTile) {
         setSelectedSwapTile({ row: r, col: c });
       } else {
-        // Swap executed
         onTileClick(r, c);
         setSelectedSwapTile(null);
       }
@@ -93,18 +196,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
+  // Flatten active non-empty tiles for percentage placement
+  const allActiveTiles = grid.flatMap(row => row).filter(t => t.kind !== 'empty');
+
   return (
     <div className="w-full flex-1 flex flex-col items-center justify-between p-2 select-none relative overflow-hidden">
       {/* Background Rustic Attic Scene Elements */}
       <div className="absolute inset-0 pointer-events-none opacity-25 z-0 flex flex-col justify-between">
-        {/* Wall cracks & rustic clock */}
         <div className="flex justify-between p-6">
           <div className="w-14 h-14 rounded-full border-4 border-amber-900/60 bg-amber-950/40 flex items-center justify-center text-xs font-mono font-bold text-amber-200">
             🕒
           </div>
           <div className="text-4xl opacity-50">🕸️</div>
         </div>
-        {/* Puddle / floor rug */}
         <div className="w-80 h-28 mx-auto rounded-full bg-sky-950/40 blur-md -mb-6" />
       </div>
 
@@ -126,197 +230,288 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {/* Main Board Container */}
       <div className="w-full flex-1 flex items-center justify-center z-10 p-1">
         <div
-          className="w-full max-w-[440px] aspect-square bg-[#221f26]/90 p-2 sm:p-2.5 rounded-3xl border-4 border-white shadow-2xl relative flex items-center justify-center"
+          ref={boardRef}
+          className="w-full max-w-[440px] aspect-square bg-[#221f26]/95 p-2 sm:p-2.5 rounded-3xl border-4 border-white shadow-2xl relative flex items-center justify-center overflow-hidden"
           style={{
             boxShadow: '0 20px 40px -10px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.4)',
           }}
         >
+          {/* 1. Stationary Recessed Board Background Slots */}
           <div
-            className="w-full h-full grid gap-1 sm:gap-1.5"
+            className="absolute inset-2 sm:inset-2.5 grid gap-1 sm:gap-1.5 z-0 pointer-events-none"
             style={{
               gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
               gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
             }}
           >
-            {grid.map((rowTiles, r) =>
-              rowTiles.map((tile, c) => {
-                if (tile.kind === 'empty') {
-                  return (
-                    <div
-                      key={tile.id || `${r}-${c}`}
-                      className="w-full h-full rounded-xl bg-black/25 border border-white/5"
-                    />
-                  );
-                }
+            {Array.from({ length: rows * cols }).map((_, i) => (
+              <div
+                key={i}
+                className="w-full h-full rounded-2xl bg-black/45 border border-white/5 shadow-inner"
+              />
+            ))}
+          </div>
 
-                // SIGNATURE OBSTACLE: Pink Armchair (沙发)
-                if (tile.kind === 'obstacle' && tile.obstacle === 'armchair') {
-                  return (
+          {/* 2. Dynamic Physical Tile Layer */}
+          <div className="absolute inset-2 sm:inset-2.5 z-10">
+            {allActiveTiles.map(tile => {
+              const r = tile.row;
+              const c = tile.col;
+              const key = `${r},${c}`;
+              const isBlasting = blastingCoords.has(key);
+              const isWiggling = wigglingCoord === key;
+              const isDamagedObstacle = damagedObstacleCoords.has(key);
+
+              // Use animated spawn position if dropping in from above
+              const displayRow = animatedSpawnOffsets[tile.id] !== undefined ? animatedSpawnOffsets[tile.id] : r;
+              const leftPercent = (c / cols) * 100;
+              const topPercent = (displayRow / rows) * 100;
+              const widthPercent = 100 / cols;
+              const heightPercent = 100 / rows;
+
+              let animClass = '';
+              if (isBlasting) {
+                animClass = 'animate-pop-blast pointer-events-none';
+              } else if (isWiggling) {
+                animClass = 'animate-tile-wiggle';
+              } else if (isDamagedObstacle) {
+                animClass = 'animate-armchair-wobble';
+              }
+
+              return (
+                <div
+                  key={tile.id}
+                  id={`tile-${r}-${c}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${leftPercent}%`,
+                    top: `${topPercent}%`,
+                    width: `${widthPercent}%`,
+                    height: `${heightPercent}%`,
+                    padding: '2px',
+                    transition: 'top 320ms cubic-bezier(0.34, 1.56, 0.64, 1), left 300ms ease, transform 180ms ease, opacity 180ms ease',
+                    zIndex: isBlasting ? 25 : 10,
+                  }}
+                >
+                  {/* SIGNATURE OBSTACLE: Pink Armchair (沙发) */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'armchair' && (
                     <div
-                      key={tile.id}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className="w-full h-full rounded-2xl bg-gradient-to-b from-[#F472B6] via-[#EC4899] to-[#BE185D] border-t-2 border-l-2 border-b-3 border-r-2 border-[#FBCFE8] shadow-md flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition-all overflow-hidden"
+                      className={`w-full h-full rounded-2xl bg-gradient-to-b from-[#F472B6] via-[#EC4899] to-[#BE185D] border-t-2 border-l-2 border-b-3 border-r-2 border-[#FBCFE8] shadow-md flex flex-col items-center justify-center relative cursor-pointer active:scale-95 transition-all overflow-hidden ${animClass}`}
                       style={{
                         boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.6), 0 4px 6px rgba(0,0,0,0.3)',
                       }}
                     >
-                      {/* 3D Tufted Pink Armchair Visual */}
-                      <div className="w-full h-full flex flex-col items-center justify-center relative">
-                        {/* Chair back cushion */}
+                      <div className="w-full h-full flex flex-col items-center justify-center relative pointer-events-none">
                         <div className="w-4/5 h-2/5 rounded-t-lg bg-pink-300/40 border border-white/40 flex items-center justify-center">
                           <span className="text-xs filter drop-shadow">🛋️</span>
                         </div>
-                        {/* Chair seat pillow */}
                         <div className="w-5/6 h-2/5 rounded-md bg-white/90 border border-pink-200 shadow-inner flex items-center justify-center -mt-0.5">
                           <span className="w-2.5 h-1 bg-pink-400/40 rounded-full" />
                         </div>
                       </div>
                     </div>
-                  );
-                }
+                  )}
 
-                // Crate Obstacle
-                if (tile.kind === 'obstacle' && tile.obstacle === 'crate') {
-                  const isReinforced = (tile.hitPoints || 1) > 1;
-                  return (
+                  {/* Crate Obstacle */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'crate' && (
                     <div
-                      key={tile.id}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className={`w-full h-full rounded-2xl flex flex-col items-center justify-center relative cursor-pointer shadow-md border-2 transition-all active:scale-95 ${
-                        isReinforced
+                      className={`w-full h-full rounded-2xl flex flex-col items-center justify-center relative cursor-pointer shadow-md border-2 transition-all active:scale-95 ${animClass} ${
+                        (tile.hitPoints || 1) > 1
                           ? 'bg-gradient-to-br from-amber-800 to-amber-950 border-amber-600 shadow-amber-950'
                           : 'bg-gradient-to-br from-amber-600 to-amber-800 border-amber-400 shadow-amber-900'
                       }`}
                     >
-                      <span className="text-xl sm:text-2xl filter drop-shadow">📦</span>
-                      {isReinforced && (
+                      <span className="text-xl sm:text-2xl filter drop-shadow pointer-events-none">📦</span>
+                      {(tile.hitPoints || 1) > 1 && (
                         <span className="absolute bottom-1 right-1 px-1 rounded bg-black/70 text-[9px] font-black text-amber-300">
                           x2
                         </span>
                       )}
                     </div>
-                  );
-                }
+                  )}
 
-                // Drop Item (Lipstick)
-                if (tile.kind === 'obstacle' && tile.obstacle === 'drop_item') {
-                  return (
+                  {/* Drop Item (Lipstick) */}
+                  {tile.kind === 'obstacle' && tile.obstacle === 'drop_item' && (
                     <div
-                      key={tile.id}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className="w-full h-full rounded-2xl bg-rose-500/20 border-2 border-rose-400/60 shadow-lg flex items-center justify-center relative animate-pulse"
+                      className={`w-full h-full rounded-2xl bg-rose-500/20 border-2 border-rose-400/60 shadow-lg flex items-center justify-center relative animate-pulse cursor-pointer ${animClass}`}
                     >
-                      <div className="flex flex-col items-center">
+                      <div className="flex flex-col items-center pointer-events-none">
                         <span className="text-2xl sm:text-3xl filter drop-shadow">💄</span>
                         <span className="text-[8px] font-black uppercase text-pink-300">DROP ↓</span>
                       </div>
                     </div>
-                  );
-                }
+                  )}
 
-                // BOOSTER: Barber-Pole Firecracker (Row or Col Rocket)
-                if (tile.kind === 'booster' && (tile.booster === 'firecracker_h' || tile.booster === 'firecracker_v')) {
-                  const isHoriz = tile.booster === 'firecracker_h';
-                  return (
+                  {/* BOOSTER: Barber-Pole Firecracker Rocket */}
+                  {tile.kind === 'booster' && (tile.booster === 'firecracker_h' || tile.booster === 'firecracker_v') && (
                     <button
-                      key={tile.id}
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className="w-full h-full rounded-2xl border-2 border-amber-200 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all overflow-hidden"
+                      className={`w-full h-full rounded-2xl border-2 border-amber-200 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all overflow-hidden ${animClass}`}
                       style={{
                         background: 'repeating-linear-gradient(45deg, #EF4444, #EF4444 6px, #FBBF24 6px, #FBBF24 12px, #3B82F6 12px, #3B82F6 18px)',
                         boxShadow: '0 0 15px rgba(251, 191, 36, 0.8), inset 0 2px 4px rgba(255,255,255,0.7)',
                       }}
                     >
-                      <div className="w-6 h-6 rounded-full bg-slate-950/80 border border-white flex items-center justify-center shadow-lg">
-                        <span className={`text-sm transform ${isHoriz ? 'rotate-90' : 'rotate-0'}`}>
+                      <div className="w-6 h-6 rounded-full bg-slate-950/80 border border-white flex items-center justify-center shadow-lg pointer-events-none">
+                        <span className={`text-sm transform ${tile.booster === 'firecracker_h' ? 'rotate-90' : 'rotate-0'}`}>
                           🧨
                         </span>
                       </div>
-                      <span className="absolute bottom-0.5 px-1 rounded bg-black/80 text-[8px] font-black text-amber-300 uppercase">
-                        {isHoriz ? 'ROW' : 'COL'}
+                      <span className="absolute bottom-0.5 px-1 rounded bg-black/80 text-[8px] font-black text-amber-300 uppercase pointer-events-none">
+                        {tile.booster === 'firecracker_h' ? 'ROW' : 'COL'}
                       </span>
                     </button>
-                  );
-                }
+                  )}
 
-                // BOOSTER: Cartoon Star Bomb
-                if (tile.kind === 'booster' && tile.booster === 'bomb') {
-                  return (
+                  {/* BOOSTER: Cartoon Star Bomb */}
+                  {tile.kind === 'booster' && tile.booster === 'bomb' && (
                     <button
-                      key={tile.id}
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className="w-full h-full rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-950 to-black border-2 border-amber-400 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all animate-pulse"
+                      className={`w-full h-full rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-950 to-black border-2 border-amber-400 shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all animate-pulse ${animClass}`}
                       style={{
                         boxShadow: '0 0 16px rgba(239, 68, 68, 0.8), inset 0 2px 4px rgba(255,255,255,0.4)',
                       }}
                     >
-                      <span className="text-2xl sm:text-3xl filter drop-shadow">💣</span>
+                      <span className="text-2xl sm:text-3xl filter drop-shadow pointer-events-none">💣</span>
                       <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
                     </button>
-                  );
-                }
+                  )}
 
-                // BOOSTER: Disco Propeller
-                if (tile.kind === 'booster' && tile.booster === 'disco') {
-                  return (
+                  {/* BOOSTER: Disco Propeller */}
+                  {tile.kind === 'booster' && tile.booster === 'disco' && (
                     <button
-                      key={tile.id}
                       disabled={disabled}
                       onClick={() => handleTileClickInternal(r, c)}
-                      className="w-full h-full rounded-2xl bg-gradient-to-tr from-pink-500 via-indigo-500 to-amber-300 border-2 border-white shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all"
+                      className={`w-full h-full rounded-2xl bg-gradient-to-tr from-pink-500 via-indigo-500 to-amber-300 border-2 border-white shadow-xl flex items-center justify-center relative cursor-pointer hover:scale-105 active:scale-90 transition-all ${animClass}`}
                     >
-                      <span className="text-2xl sm:text-3xl filter drop-shadow">🪩</span>
+                      <span className="text-2xl sm:text-3xl filter drop-shadow pointer-events-none">🪩</span>
                     </button>
-                  );
-                }
+                  )}
 
-                // NORMAL COLORED CUBE
-                const colorClasses = getColorClasses(tile.color);
-                const colorIcon = getColorIcon(tile.color);
-                const isSelectedForSwap = selectedSwapTile && selectedSwapTile.row === r && selectedSwapTile.col === c;
+                  {/* NORMAL COLORED CUBE */}
+                  {tile.kind === 'color' && (
+                    <button
+                      disabled={disabled}
+                      onClick={() => handleTileClickInternal(r, c)}
+                      className={`w-full h-full rounded-2xl border-t-2 border-l-2 border-b-4 border-r-2 ${getColorClasses(tile.color)} flex items-center justify-center relative cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 active:border-b-2 shadow-inner ${animClass} ${
+                        selectedSwapTile && selectedSwapTile.row === r && selectedSwapTile.col === c ? 'ring-4 ring-yellow-400 animate-bounce' : ''
+                      }`}
+                      style={{
+                        boxShadow: 'inset 0 3px 4px rgba(255,255,255,0.5), inset 0 -3px 4px rgba(0,0,0,0.3)',
+                      }}
+                    >
+                      {/* Glossy highlight */}
+                      <div className="absolute top-1 left-1.5 right-1.5 h-1/3 bg-white/30 rounded-t-xl pointer-events-none" />
 
-                return (
-                  <button
-                    key={tile.id}
-                    disabled={disabled}
-                    onClick={() => handleTileClickInternal(r, c)}
-                    className={`w-full h-full rounded-2xl border-t-2 border-l-2 border-b-4 border-r-2 ${colorClasses} flex items-center justify-center relative cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 active:border-b-2 shadow-inner ${
-                      isSelectedForSwap ? 'ring-4 ring-yellow-400 animate-bounce' : ''
-                    }`}
-                    style={{
-                      boxShadow: 'inset 0 3px 4px rgba(255,255,255,0.5), inset 0 -3px 4px rgba(0,0,0,0.3)',
-                    }}
-                  >
-                    {/* Glossy highlight */}
-                    <div className="absolute top-1 left-1.5 right-1.5 h-1/3 bg-white/30 rounded-t-xl pointer-events-none" />
+                      {/* Embossed icon */}
+                      <span className="text-base sm:text-lg filter drop-shadow select-none pointer-events-none">
+                        {getColorIcon(tile.color)}
+                      </span>
 
-                    {/* Embossed icon (Heart, Star, Dress, Ribbon, Starburst) */}
-                    <span className="text-base sm:text-lg filter drop-shadow select-none">
-                      {colorIcon}
-                    </span>
+                      {/* Preview Badge for 5+, 7+, 9+ cluster rewards */}
+                      {tile.highlightBooster && getBoosterBadge(tile.highlightBooster)}
 
-                    {/* Preview Badge for 5+, 7+, 9+ cluster rewards */}
-                    {tile.highlightBooster && getBoosterBadge(tile.highlightBooster)}
-
-                    {/* Ice Coating */}
-                    {tile.iceCover && (
-                      <div className="absolute inset-0 rounded-2xl bg-cyan-200/60 backdrop-blur-[1px] border-2 border-cyan-300 flex items-center justify-center pointer-events-none">
-                        <span className="text-xs sm:text-sm">❄️</span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })
-            )}
+                      {/* Ice Coating */}
+                      {tile.iceCover && (
+                        <div className="absolute inset-0 rounded-2xl bg-cyan-200/60 backdrop-blur-[1px] border-2 border-cyan-300 flex items-center justify-center pointer-events-none">
+                          <span className="text-xs sm:text-sm">❄️</span>
+                        </div>
+                      )}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
+
+          {/* 3. Particle Explosion Overlay */}
+          {particles.map(p => (
+            <div
+              key={p.id}
+              className="absolute rounded-full pointer-events-none z-30 transition-all duration-300 ease-out"
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y}%`,
+                width: `${p.size}px`,
+                height: `${p.size}px`,
+                backgroundColor: p.color,
+                boxShadow: `0 0 10px ${p.color}`,
+                transform: `translate(${p.vx}px, ${p.vy}px) scale(0)`,
+                opacity: 0,
+              }}
+            />
+          ))}
+
+          {/* 4. Barber-Pole Rocket Laser Sweeper Overlay */}
+          {rocketBeams.map(beam => {
+            if (beam.orientation === 'h') {
+              return (
+                <div
+                  key={beam.id}
+                  className="absolute left-0 right-0 z-40 pointer-events-none animate-laser-beam"
+                  style={{
+                    top: `${(beam.index / rows) * 100}%`,
+                    height: `${(1 / rows) * 100}%`,
+                    background: 'linear-gradient(90deg, rgba(239,68,68,0.9), rgba(251,191,36,1), rgba(59,130,246,0.9))',
+                    boxShadow: '0 0 20px rgba(251,191,36,0.9), 0 0 40px rgba(239,68,68,0.8)',
+                  }}
+                >
+                  {/* Left-flying and Right-flying Rocket Heads */}
+                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-2xl -scale-x-100 filter drop-shadow">
+                    🚀
+                  </span>
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-2xl filter drop-shadow">
+                    🚀
+                  </span>
+                </div>
+              );
+            } else {
+              return (
+                <div
+                  key={beam.id}
+                  className="absolute top-0 bottom-0 z-40 pointer-events-none animate-laser-beam"
+                  style={{
+                    left: `${(beam.index / cols) * 100}%`,
+                    width: `${(1 / cols) * 100}%`,
+                    background: 'linear-gradient(180deg, rgba(239,68,68,0.9), rgba(251,191,36,1), rgba(59,130,246,0.9))',
+                    boxShadow: '0 0 20px rgba(251,191,36,0.9), 0 0 40px rgba(239,68,68,0.8)',
+                  }}
+                >
+                  <span className="absolute top-1 left-1/2 -translate-x-1/2 text-2xl -rotate-90 filter drop-shadow">
+                    🚀
+                  </span>
+                  <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-2xl rotate-90 filter drop-shadow">
+                    🚀
+                  </span>
+                </div>
+              );
+            }
+          })}
+
+          {/* 5. Cartoon Star Bomb Shockwave Overlay */}
+          {bombShockwaves.map(sw => (
+            <div
+              key={sw.id}
+              className="absolute rounded-full border-4 border-amber-400 bg-amber-400/25 pointer-events-none z-40 animate-shockwave"
+              style={{
+                left: `${((sw.col - 1) / cols) * 100}%`,
+                top: `${((sw.row - 1) / rows) * 100}%`,
+                width: `${(3 / cols) * 100}%`,
+                height: `${(3 / rows) * 100}%`,
+              }}
+            />
+          ))}
         </div>
       </div>
 
       {/* Authentic Beauty Blast Bottom Power-Up Bar */}
       <footer className="w-full max-w-sm mx-auto flex items-center justify-between px-2 py-2 z-20">
-        {/* Hammer Tool (Lv.7) */}
+        {/* Hammer Tool (Smash) */}
         <button
           onClick={() => onSelectTool(activeTool === 'hammer' ? null : 'hammer')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-transform active:scale-90 ${
@@ -331,7 +526,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           <span className="text-[10px] font-black text-sky-200">Hammer</span>
         </button>
 
-        {/* Swap Hand Tool (Lv.8) */}
+        {/* Swap Hand Tool */}
         <button
           onClick={() => {
             setSelectedSwapTile(null);
@@ -349,7 +544,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           <span className="text-[10px] font-black text-sky-200">Swap</span>
         </button>
 
-        {/* Bomb Tool (Lv.9) */}
+        {/* Bomb Tool */}
         <button
           onClick={() => onSelectTool(activeTool === 'bomb' ? null : 'bomb')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-transform active:scale-90 ${
@@ -364,7 +559,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           <span className="text-[10px] font-black text-sky-200">Bomb</span>
         </button>
 
-        {/* Firecracker Tool (Lv.14) */}
+        {/* Firecracker Tool */}
         <button
           onClick={() => onSelectTool(activeTool === 'firecracker' ? null : 'firecracker')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-transform active:scale-90 ${

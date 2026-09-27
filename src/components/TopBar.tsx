@@ -11,6 +11,7 @@ interface TopBarProps {
   onRestart: () => void;
   onOpenLevelSelect: () => void;
   onOpenHowToPlay: () => void;
+  isGoalBumping?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -22,6 +23,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onRestart,
   onOpenLevelSelect,
   onOpenHowToPlay,
+  isGoalBumping = false,
 }) => {
   const getObjectiveVisual = (type: ObjectiveType) => {
     switch (type) {
@@ -104,7 +106,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {/* Center: Glossy Goal Capsule (目标) */}
-        <div className="flex-1 bg-white/95 rounded-3xl p-1 px-3 shadow-xl border-2 border-white flex flex-col items-center justify-center relative min-w-[130px]">
+        <div
+          id="goal-capsule"
+          className={`flex-1 bg-white/95 rounded-3xl p-1 px-3 shadow-xl border-2 border-white flex flex-col items-center justify-center relative min-w-[130px] transition-all duration-200 transform ${
+            isGoalBumping ? 'scale-110 ring-4 ring-amber-400 shadow-amber-400/50' : 'scale-100'
+          }`}
+        >
           <span className="text-[10px] uppercase font-black tracking-widest text-amber-500 -mt-0.5">
             GOAL • 目标
           </span>

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LevelConfig, Tile, GameStatus, ActiveTool } from './types/game';
+import { LevelConfig, Tile, GameStatus, ActiveTool, RocketBeam, Shockwave } from './types/game';
 import { HANDCRAFTED_LEVELS, generateProceduralLevel } from './levels/levelData';
 import {
   initializeBoard,
   handleTileClick,
   checkObjectivesMet,
   checkHasValidMoves,
+  checkTileCanPop,
   shuffleBoard,
   applyHammerTool,
   applySwapTool,
@@ -16,6 +17,13 @@ import { GameBoard } from './components/GameBoard';
 import { GameOverModal } from './components/GameOverModal';
 import { LevelSelectModal } from './components/LevelSelectModal';
 import { HowToPlayModal } from './components/HowToPlayModal';
+
+interface FlyingCollectibleItem {
+  id: string;
+  currentX: number;
+  currentY: number;
+  icon: string;
+}
 
 export function App() {
   // Persistence
@@ -42,6 +50,16 @@ export function App() {
   const [isShuffling, setIsShuffling] = useState<boolean>(false);
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
   const [firstSwapCoord, setFirstSwapCoord] = useState<{ row: number; col: number } | null>(null);
+
+  // Multi-Phase Animation & Physics State
+  const [isBoardLocked, setIsBoardLocked] = useState<boolean>(false);
+  const [blastingCoords, setBlastingCoords] = useState<Set<string>>(new Set());
+  const [wigglingCoord, setWigglingCoord] = useState<string | null>(null);
+  const [damagedObstacleCoords, setDamagedObstacleCoords] = useState<Set<string>>(new Set());
+  const [rocketBeams, setRocketBeams] = useState<RocketBeam[]>([]);
+  const [bombShockwaves, setBombShockwaves] = useState<Shockwave[]>([]);
+  const [isGoalBumping, setIsGoalBumping] = useState<boolean>(false);
+  const [flyingCollectibles, setFlyingCollectibles] = useState<FlyingCollectibleItem[]>([]);
 
   // Modals
   const [showLevelSelect, setShowLevelSelect] = useState<boolean>(false);
@@ -76,12 +94,20 @@ export function App() {
     setScore(0);
     setStatus('playing');
     setIsShuffling(false);
+    setIsBoardLocked(false);
+    setBlastingCoords(new Set());
+    setWigglingCoord(null);
+    setDamagedObstacleCoords(new Set());
+    setRocketBeams([]);
+    setBombShockwaves([]);
+    setFlyingCollectibles([]);
+    setIsGoalBumping(false);
     setActiveTool(null);
     setFirstSwapCoord(null);
   }, []);
 
   const onTileClick = (row: number, col: number) => {
-    if (status !== 'playing' || isShuffling) return;
+    if (status !== 'playing' || isShuffling || isBoardLocked) return;
 
     // Handle Active Power-Up Tools
     if (activeTool === 'hammer') {
@@ -138,49 +164,134 @@ export function App() {
       return;
     }
 
-    // Standard Blast / Match Tap
+    // Step 1: Check if the tile can pop
+    if (!checkTileCanPop(grid, row, col)) {
+      // Rejection feedback: single isolated cube cannot pop
+      sound.playTileTapInvalid();
+      setWigglingCoord(`${row},${col}`);
+      setTimeout(() => setWigglingCoord(null), 280);
+      return;
+    }
+
+    // Step 2: Valid move!
     const result = handleTileClick(grid, row, col, currentLevel.colors);
     if (!result) return;
 
+    setIsBoardLocked(true);
     const nextMoves = movesLeft - 1;
     const nextScore = score + result.scoreGained;
+    setMovesLeft(nextMoves);
 
-    const updatedObjectives = currentLevel.objectives.map(obj => {
-      const cleared = result.clearedObjectives[obj.type] || 0;
-      return {
-        ...obj,
-        current: obj.current + cleared,
-      };
+    // Phase 1 (0ms - 200ms): Blast, Beams, Shockwaves, Armchair Wobble
+    const blastKeys = new Set(result.blastedPositions.map(p => `${p.row},${p.col}`));
+    const damagedKeys = new Set(result.damagedObstacles.map(p => `${p.row},${p.col}`));
+    setBlastingCoords(blastKeys);
+    setDamagedObstacleCoords(damagedKeys);
+
+    if (result.rocketBeams && result.rocketBeams.length > 0) {
+      setRocketBeams(result.rocketBeams.map((b, idx) => ({ ...b, id: `rb-${Date.now()}-${idx}` })));
+    }
+    if (result.bombShockwaves && result.bombShockwaves.length > 0) {
+      setBombShockwaves(result.bombShockwaves.map((s, idx) => ({ ...s, id: `bs-${Date.now()}-${idx}` })));
+    }
+
+    // Spawn Flying Collectibles for destroyed armchairs
+    const flyingItems: FlyingCollectibleItem[] = [];
+    const goalEl = document.getElementById('goal-capsule');
+    const goalRect = goalEl?.getBoundingClientRect();
+
+    result.damagedObstacles.forEach((p, idx) => {
+      const tileEl = document.getElementById(`tile-${p.row}-${p.col}`);
+      if (tileEl && goalRect) {
+        const tRect = tileEl.getBoundingClientRect();
+        flyingItems.push({
+          id: `fly-${Date.now()}-${idx}`,
+          currentX: tRect.left + tRect.width / 2,
+          currentY: tRect.top + tRect.height / 2,
+          icon: '🛋️',
+        });
+      }
     });
 
-    const isWon = checkObjectivesMet(updatedObjectives);
-
-    setCurrentLevel(prev => ({
-      ...prev,
-      objectives: updatedObjectives,
-    }));
-    setGrid(result.newGrid);
-    setMovesLeft(nextMoves);
-    setScore(nextScore);
-
-    if (isWon) {
-      triggerFeverMode(result.newGrid, nextMoves, nextScore);
-      return;
+    if (flyingItems.length > 0) {
+      setFlyingCollectibles(flyingItems);
+      // Trigger fly translation toward goal capsule on next frame
+      requestAnimationFrame(() => {
+        if (goalRect) {
+          const targetX = goalRect.left + goalRect.width / 2;
+          const targetY = goalRect.top + goalRect.height / 2;
+          setFlyingCollectibles(prev =>
+            prev.map(item => ({
+              ...item,
+              currentX: targetX,
+              currentY: targetY,
+            }))
+          );
+        }
+      });
     }
 
-    if (nextMoves <= 0) {
-      sound.playDefeat();
-      setStatus('lost');
-      return;
-    }
+    // Phase 2 (200ms - 450ms): Gravity Fall & Top Refill
+    setTimeout(() => {
+      setBlastingCoords(new Set());
+      setDamagedObstacleCoords(new Set());
+      setRocketBeams([]);
+      setBombShockwaves([]);
 
-    if (!checkHasValidMoves(result.newGrid)) {
-      setIsShuffling(true);
-      setTimeout(() => {
-        setGrid(prev => shuffleBoard(prev, currentLevel.colors));
-        setIsShuffling(false);
-      }, 700);
-    }
+      // Update grid with smoothly falling tiles
+      setGrid(result.newGrid);
+      sound.playSlideLanding();
+    }, 200);
+
+    // Phase 3 (450ms - 550ms): Flying Item Arrival & Goal Capsule Bump
+    setTimeout(() => {
+      setFlyingCollectibles([]);
+      if (flyingItems.length > 0) {
+        setIsGoalBumping(true);
+        sound.playCollect();
+        setTimeout(() => setIsGoalBumping(false), 240);
+      }
+
+      const updatedObjectives = currentLevel.objectives.map(obj => {
+        const cleared = result.clearedObjectives[obj.type] || 0;
+        return {
+          ...obj,
+          current: obj.current + cleared,
+        };
+      });
+
+      setCurrentLevel(prev => ({
+        ...prev,
+        objectives: updatedObjectives,
+      }));
+      setScore(nextScore);
+
+      const isWon = checkObjectivesMet(updatedObjectives);
+
+      if (isWon) {
+        triggerFeverMode(result.newGrid, nextMoves, nextScore);
+        setIsBoardLocked(false);
+        return;
+      }
+
+      if (nextMoves <= 0) {
+        sound.playDefeat();
+        setStatus('lost');
+        setIsBoardLocked(false);
+        return;
+      }
+
+      if (!checkHasValidMoves(result.newGrid)) {
+        setIsShuffling(true);
+        setTimeout(() => {
+          setGrid(prev => shuffleBoard(prev, currentLevel.colors));
+          setIsShuffling(false);
+          setIsBoardLocked(false);
+        }, 700);
+      } else {
+        setIsBoardLocked(false);
+      }
+    }, 450);
   };
 
   const triggerFeverMode = (_currentGrid: Tile[][], leftoverMoves: number, baseScore: number) => {
@@ -253,6 +364,7 @@ export function App() {
         onRestart={() => loadLevel(currentLevel)}
         onOpenLevelSelect={() => setShowLevelSelect(true)}
         onOpenHowToPlay={() => setShowHowToPlay(true)}
+        isGoalBumping={isGoalBumping}
       />
 
       {/* Shuffling Notification */}
@@ -277,11 +389,33 @@ export function App() {
       <GameBoard
         grid={grid}
         onTileClick={onTileClick}
-        disabled={status !== 'playing' || isShuffling}
+        disabled={status !== 'playing' || isShuffling || isBoardLocked}
         activeTool={activeTool}
         onSelectTool={setActiveTool}
         onOpenSettings={() => setShowLevelSelect(true)}
+        blastingCoords={blastingCoords}
+        wigglingCoord={wigglingCoord}
+        damagedObstacleCoords={damagedObstacleCoords}
+        rocketBeams={rocketBeams}
+        bombShockwaves={bombShockwaves}
       />
+
+      {/* Floating Collectibles flying to TopBar Goal Capsule */}
+      {flyingCollectibles.map(item => (
+        <div
+          key={item.id}
+          className="fixed pointer-events-none z-50 transition-all duration-400 ease-out"
+          style={{
+            left: `${item.currentX}px`,
+            top: `${item.currentY}px`,
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          <div className="w-9 h-9 rounded-full bg-pink-500/90 border-2 border-white shadow-2xl flex items-center justify-center text-lg animate-pulse">
+            {item.icon}
+          </div>
+        </div>
+      ))}
 
       {/* Modals */}
       {(status === 'won' || status === 'lost') && (
